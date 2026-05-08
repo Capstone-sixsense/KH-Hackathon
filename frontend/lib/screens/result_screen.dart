@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:khuthon/models/recommendation_models.dart';
 
+enum _TrackViewMode { gallery, list }
+
 class ResultScreen extends StatelessWidget {
   const ResultScreen({super.key, required this.keyword, required this.response});
 
@@ -413,6 +415,256 @@ class _GlowOrb extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _GroupTracksScreen extends StatefulWidget {
+  const _GroupTracksScreen({
+    required this.title,
+    required this.subtitle,
+    required this.color,
+    required this.tracks,
+    required this.initialMode,
+  });
+
+  final String title;
+  final String subtitle;
+  final Color color;
+  final List<TrackRecommendation> tracks;
+  final _TrackViewMode initialMode;
+
+  @override
+  State<_GroupTracksScreen> createState() => _GroupTracksScreenState();
+}
+
+class _GroupTracksScreenState extends State<_GroupTracksScreen> {
+  late _TrackViewMode _mode;
+
+  @override
+  void initState() {
+    super.initState();
+    _mode = widget.initialMode;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.title),
+      ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+            child: Text(widget.subtitle, style: const TextStyle(color: Color(0xFFA1A1AA))),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+            child: Text(
+              '총 ${widget.tracks.length}곡',
+              style: TextStyle(color: widget.color, fontWeight: FontWeight.w700),
+            ),
+          ),
+          Center(
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A1A25),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _ViewModeToggleChip(
+                    label: '갤러리',
+                    selected: _mode == _TrackViewMode.gallery,
+                    color: widget.color,
+                    onTap: () => setState(() => _mode = _TrackViewMode.gallery),
+                  ),
+                  const SizedBox(width: 6),
+                  _ViewModeToggleChip(
+                    label: '리스트',
+                    selected: _mode == _TrackViewMode.list,
+                    color: widget.color,
+                    onTap: () => setState(() => _mode = _TrackViewMode.list),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child: widget.tracks.isEmpty
+                ? const Center(
+                    child: Text('표시할 추천 곡이 없습니다.', style: TextStyle(color: Color(0xFFA1A1AA))),
+                  )
+                : _mode == _TrackViewMode.gallery
+                    ? GridView.builder(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 6,
+                          mainAxisSpacing: 10,
+                          crossAxisSpacing: 10,
+                          childAspectRatio: 0.85,
+                        ),
+                        itemCount: widget.tracks.length,
+                        itemBuilder: (context, index) {
+                          final track = widget.tracks[index];
+                          return _TrackGalleryCard(track: track, color: widget.color);
+                        },
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                        itemCount: widget.tracks.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (context, index) {
+                          final track = widget.tracks[index];
+                          return _TrackListTile(track: track, color: widget.color);
+                        },
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TrackGalleryCard extends StatelessWidget {
+  const _TrackGalleryCard({required this.track, required this.color});
+
+  final TrackRecommendation track;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final score = (track.reverseScore ?? track.matchScore ?? 0).toStringAsFixed(2);
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF171721),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+      ),
+      padding: const EdgeInsets.all(6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AspectRatio(
+            aspectRatio: 1,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: _TrackArt(url: track.albumArtUrl, color: color),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(track.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 2),
+          Text(track.artist, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, color: Color(0xFFA1A1AA))),
+          const Spacer(),
+          Text('점수 $score', style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+}
+
+class _ViewModeToggleChip extends StatelessWidget {
+  const _ViewModeToggleChip({
+    required this.label,
+    required this.selected,
+    required this.color,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          color: selected ? color.withValues(alpha: 0.22) : Colors.transparent,
+          border: Border.all(
+            color: selected ? color.withValues(alpha: 0.72) : Colors.white.withValues(alpha: 0.1),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: selected ? color : const Color(0xFFD4D4D8),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TrackListTile extends StatelessWidget {
+  const _TrackListTile({required this.track, required this.color});
+
+  final TrackRecommendation track;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final score = (track.reverseScore ?? track.matchScore ?? 0).toStringAsFixed(2);
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF171721),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: ListTile(
+        leading: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: SizedBox(
+            width: 46,
+            height: 46,
+            child: _TrackArt(url: track.albumArtUrl, color: color),
+          ),
+        ),
+        title: Text(track.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: Text(track.artist, maxLines: 1, overflow: TextOverflow.ellipsis),
+        trailing: Text('점수 $score', style: TextStyle(color: color, fontWeight: FontWeight.w700)),
+      ),
+    );
+  }
+}
+
+class _TrackArt extends StatelessWidget {
+  const _TrackArt({required this.url, required this.color});
+
+  final String? url;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final imageUrl = url ?? '';
+    if (imageUrl.isNotEmpty) {
+      return Image.network(
+        imageUrl,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _fallback(),
+      );
+    }
+    return _fallback();
+  }
+
+  Widget _fallback() {
+    return Container(
+      color: const Color(0xFF1D1D27),
+      alignment: Alignment.center,
+      child: Icon(Icons.music_note_rounded, color: color.withValues(alpha: 0.86)),
     );
   }
 }
