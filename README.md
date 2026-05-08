@@ -2,7 +2,7 @@
 # 팀 명: Six Sense
 
 <p align="center">
-  <img src="./frontend/assets/images/search.png" alt="Side-B 검색 화면" width="720" />
+  <img src="./frontend/assets/images/search.png" alt="Side-B 검색 화면" width="600" />
 </p>
 
 Side-B는 레코드의 B-side처럼 가려진 음악들을 다시 들려주는 서비스입니다. 
