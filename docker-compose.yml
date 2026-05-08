@@ -1,0 +1,78 @@
+version: "3.9"
+
+services:
+  # ─────────────────────────────────────────
+  # Backend – FastAPI
+  # ─────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: khuthon_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID}
+      - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET}
+      - LASTFM_API_KEY=${LASTFM_API_KEY}
+      - LASTFM_API_SECRET=${LASTFM_API_SECRET}
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./backend:/app          # 핫 리로드용 마운트 (개발 시)
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - khuthon_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ─────────────────────────────────────────
+  # Frontend – Flutter Web (nginx 서빙)
+  # ─────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - API_BASE_URL=http://backend:8000   # 빌드 시 주입
+    container_name: khuthon_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - khuthon_net
+
+  # ─────────────────────────────────────────
+  # Redis – API 응답 캐싱 (Last.fm / Spotify)
+  # ─────────────────────────────────────────
+  redis:
+    image: redis:7.2-alpine
+    container_name: khuthon_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - khuthon_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  khuthon_net:
+    driver: bridge
+
+volumes:
+  redis_data:
