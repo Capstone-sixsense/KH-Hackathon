@@ -58,6 +58,8 @@ class TrackInfo:
     label:         str         = ""     # 프론트 표시용 레이블
     reason_tags:   list[str]   = field(default_factory=list)  # 추천 근거 태그
     artist_listeners: int | None = None  # Last.fm 아티스트 전체 리스너 수
+    artist_spotify_popularity: int | None = None   # Spotify 아티스트 popularity 0~100
+    artist_spotify_followers:  int | None = None   # Spotify 아티스트 팔로워 수
 
 
 # ════════════════════════════════════════════════════════════════
@@ -155,11 +157,16 @@ async def _enrich_with_spotify(
     tracks: list[TrackInfo],
 ) -> list[TrackInfo]:
     """
-    TrackInfo 리스트에 Spotify popularity / spotify_id / album_art_url 를
-    병렬로 보강한다.
-    spotipy는 동기 라이브러리이므로 asyncio.to_thread 로 감싼다.
+    TrackInfo 리스트에 Spotify 트랙/아티스트 정보를 병렬로 보강한다.
+
+    트랙 검색: 트랙당 1회 병렬 호출 (기존과 동일)
+    아티스트 정보: 고유 아티스트 ID를 모아 50개씩 배치 호출
+                  → 개별 호출 대비 API 호출 수를 대폭 감소
     """
-    async def _fetch(track: TrackInfo) -> TrackInfo:
+    # ── Step A. 트랙 정보 병렬 수집 ─────────────────────────────
+    artist_id_by_idx: dict[int, str] = {}
+
+    async def _fetch(idx: int, track: TrackInfo) -> TrackInfo:
         item = await asyncio.to_thread(_sp_search, sp, track.name, track.artist)
         if item:
             track.spotify_id    = item["id"]
@@ -168,12 +175,35 @@ async def _enrich_with_spotify(
                 item["album"]["images"][0]["url"]
                 if item["album"]["images"] else None
             )
+            artist_id_by_idx[idx] = item["artists"][0]["id"]
         else:
             track.spotify_id = f"unknown_{track.name}"
             track.popularity = None
         return track
 
-    return list(await asyncio.gather(*[_fetch(t) for t in tracks]))
+    tracks = list(await asyncio.gather(*[_fetch(i, t) for i, t in enumerate(tracks)]))
+
+    # ── Step B. 아티스트 정보 배치 수집 (최대 50개/호출) ────────
+    unique_ids = list(set(artist_id_by_idx.values()))
+    artist_info: dict[str, dict] = {}
+
+    for i in range(0, len(unique_ids), 50):
+        batch = unique_ids[i : i + 50]
+        try:
+            result = await asyncio.to_thread(sp.artists, batch)
+            for a in (result.get("artists") or []):
+                if a:
+                    artist_info[a["id"]] = a
+        except Exception as e:
+            logger.warning("아티스트 배치 조회 실패: %s", e)
+
+    for idx, track in enumerate(tracks):
+        aid = artist_id_by_idx.get(idx)
+        if aid and aid in artist_info:
+            track.artist_spotify_popularity = artist_info[aid]["popularity"]
+            track.artist_spotify_followers  = artist_info[aid]["followers"]["total"]
+
+    return tracks
 
 
 def _deduplicate(tracks: list[TrackInfo]) -> list[TrackInfo]:
@@ -352,8 +382,11 @@ async def reverse_top100(
         t for t in pool
         if (t.popularity is None or pop_min <= t.popularity <= pop_max)
         and (t.artist_listeners is None or t.artist_listeners < 500000)
+        and (t.artist_spotify_popularity is None or t.artist_spotify_popularity < 55)  # ← 추가
+        and (t.artist_spotify_followers  is None or t.artist_spotify_followers  < 200000)  # ← 추가
         and (t.match_score or 0) >= match_threshold
     ]
+
     logger.info("[Reverse] 필터 후: %d개 (제거 %d개)", len(pool), before - len(pool))
 
     if not pool:
@@ -704,7 +737,7 @@ async def opposite_emotion(
         list[TrackInfo]  opposite_score 내림차순 상위 top_n개 (실패 시 [])
     """
 
-    # ── Step 1. 기준 트랙 태그 수집 ──────────────────────────────
+        # ── Step 1. 기준 트랙 태그 수집 ──────────────────────────────
     logger.info("[OppositeEmotion] 기준 트랙: %s - %s", track_name, artist)
     try:
         lf_track     = lastfm.get_track(artist, track_name)
@@ -714,6 +747,20 @@ async def opposite_emotion(
     except Exception as e:
         logger.warning("[OppositeEmotion] 태그 수집 실패: %s", e)
         return []
+
+    # ▼ 추가: 트랙 태그 없으면 아티스트 태그로 폴백
+    if not tag_names:
+        logger.warning(
+            "[OppositeEmotion] 트랙 태그 없음 — 아티스트 태그로 폴백: %s", artist
+        )
+        try:
+            lf_artist    = lastfm.get_artist(artist)
+            artist_tags  = await asyncio.to_thread(lf_artist.get_top_tags)
+            raw_tag_names = [t.item.get_name() for t in artist_tags[:top_tags]]
+            tag_names = _specific_first_tags(raw_tag_names, top_tags)
+        except Exception as e:
+            logger.warning("[OppositeEmotion] 아티스트 태그 수집도 실패: %s", e)
+            return []
 
     logger.info("[OppositeEmotion] 기준 태그: %s", tag_names)
 
