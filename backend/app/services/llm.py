@@ -9,11 +9,11 @@ from app.schemas.search import CandidateTrack, LastFmLookup, ParsedQuery
 
 
 PARSER_SYSTEM_PROMPT = """
-You classify a user's music search query for a Spotify + Last.fm discovery app.
+You classify a user's music search query for a iTunes, Deezer, and Last.fm discovery app.
 Return JSON only. No prose.
 
 Schema:
-{"type":"direct"|"mood","query":"<spotify-ready query or empty string>","tags":["<tag>", "..."],"lastfm_candidates":[{"artist":"<english/romanized artist>","title":"<english/romanized title>"}]}
+{"type":"direct"|"mood","query":"<catalog-ready query or empty string>","tags":["<tag>", "..."],"lastfm_candidates":[{"artist":"<english/romanized artist>","title":"<english/romanized title>"}]}
 
 Classification rules:
 - direct: the user names a specific track, artist, track+artist, soundtrack, album, or OST to search directly.
@@ -25,7 +25,7 @@ Classification rules:
 - Meaningless or unclassifiable strings such as "asdfqwer" or "ㅋㅋㅋㅋㅋ" are direct fallback with query equal to the raw input.
 
 Direct query rules:
-- Make query short and Spotify-ready.
+- Make query short and catalog-ready.
 - Prefer "<track title> <artist>" when both are known; use artist only when only artist is named.
 - Remove filler words and Korean particles such as "의", "노래", "추천", "틀어줘", "듣고 싶어".
 - Normalize well-known Korean artist names when certain: 아이유=IU, 뉴진스=NewJeans, 방탄소년단=BTS, 블랙핑크=BLACKPINK, 르세라핌=LE SSERAFIM, 악뮤=AKMU, 태연=Taeyeon.

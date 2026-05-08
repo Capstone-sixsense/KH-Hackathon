@@ -75,8 +75,8 @@ class _ResultScreenState extends State<ResultScreen>
     final mainTrack = _buildMainTrack(allTracks);
     final groups = [
       _NodeData(
-        label: '선택받지 못한 노래들',
-        description: 'reverse',
+        label: '밀려난 유사곡들',
+        description: '상위 추천 밖의 저노출 유사곡',
         angle: -2.35,
         ring: 0.78,
         sizeScale: 1.26,
@@ -84,8 +84,8 @@ class _ResultScreenState extends State<ResultScreen>
         tracks: widget.response.reverse,
       ),
       _NodeData(
-        label: '비슷한 취향의 노래들',
-        description: 'similar',
+        label: '취향이 겹치는 곡들',
+        description: '청취 패턴이 가까운 곡',
         angle: -0.58,
         ring: 0.64,
         sizeScale: 0.94,
@@ -93,8 +93,8 @@ class _ResultScreenState extends State<ResultScreen>
         tracks: widget.response.similar,
       ),
       _NodeData(
-        label: '반대 취향의 노래들',
-        description: 'opposite',
+        label: '반대 무드의 곡들',
+        description: '감정선이 다른 곡',
         angle: 0.62,
         ring: 0.82,
         sizeScale: 0.94,
@@ -102,8 +102,8 @@ class _ResultScreenState extends State<ResultScreen>
         tracks: widget.response.opposite,
       ),
       _NodeData(
-        label: '더 알아보고 싶은 곡들',
-        description: 'hidden',
+        label: '닮은 아티스트 곡들',
+        description: '다른 아티스트 추천',
         angle: 2.22,
         ring: 0.72,
         sizeScale: 1.13,

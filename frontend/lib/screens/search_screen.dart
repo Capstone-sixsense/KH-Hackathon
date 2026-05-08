@@ -364,35 +364,61 @@ class _SearchScreenState extends State<SearchScreen> {
                     ),
                   ),
                   padding: const EdgeInsets.symmetric(horizontal: 14),
-                  child: TextField(
-                    controller: _controller,
-                    readOnly: _isSearching,
-                    textInputAction: TextInputAction.search,
-                    onSubmitted:
-                        _isSearching ? null : (_) => _startMockSearch(),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Color(0xFFF4F4F5),
-                      fontSize: 15,
-                    ),
-                    decoration: const InputDecoration(
-                      hintText: '키워드로 음악을 탐색해 보세요',
-                      hintStyle: TextStyle(color: Color(0xFFA1A1AA)),
-                      border: InputBorder.none,
-                      prefixIcon: Icon(
-                        Icons.search_rounded,
-                        color: Color(0xFF94A3B8),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      ValueListenableBuilder<TextEditingValue>(
+                        valueListenable: _controller,
+                        builder: (context, value, child) {
+                          if (value.text.isNotEmpty) {
+                            return const SizedBox.shrink();
+                          }
+                          return IgnorePointer(child: child);
+                        },
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 24),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              '키워드로 음악을 탐색해 보세요',
+                              maxLines: 1,
+                              style: TextStyle(
+                                color: Color(0xFFA1A1AA),
+                                fontSize: 15,
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
-                      prefixIconConstraints: BoxConstraints(
-                        minWidth: 40,
-                        minHeight: 40,
+                      TextField(
+                        controller: _controller,
+                        readOnly: _isSearching,
+                        textInputAction: TextInputAction.search,
+                        onSubmitted:
+                            _isSearching ? null : (_) => _startMockSearch(),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Color(0xFFF4F4F5),
+                          fontSize: 15,
+                        ),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          prefixIcon: Icon(
+                            Icons.search_rounded,
+                            color: Color(0xFF94A3B8),
+                          ),
+                          prefixIconConstraints: BoxConstraints(
+                            minWidth: 40,
+                            minHeight: 40,
+                          ),
+                          suffixIcon: SizedBox(width: 40),
+                          suffixIconConstraints: BoxConstraints(
+                            minWidth: 40,
+                            minHeight: 40,
+                          ),
+                        ),
                       ),
-                      suffixIcon: SizedBox(width: 40),
-                      suffixIconConstraints: BoxConstraints(
-                        minWidth: 40,
-                        minHeight: 40,
-                      ),
-                    ),
+                    ],
                   ),
                 ),
               ),

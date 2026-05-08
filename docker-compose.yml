@@ -13,8 +13,6 @@ services:
     env_file:
       - .env
     environment:
-      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID}
-      - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET}
       - LASTFM_API_KEY=${LASTFM_API_KEY}
       - LASTFM_API_SECRET=${LASTFM_API_SECRET}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
@@ -52,7 +50,7 @@ services:
       - khuthon_net
 
   # ─────────────────────────────────────────
-  # Redis – API 응답 캐싱 (Last.fm / Spotify)
+  # Redis – API 응답 캐싱 (Last.fm / iTunes / Deezer)
   # ─────────────────────────────────────────
   redis:
     image: redis:7.2-alpine

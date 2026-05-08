@@ -3,8 +3,7 @@ import re
 
 from app.schemas.search import CandidateTrack, LastFmLookup, ParsedQuery, Tag
 from app.services.lastfm import LastFmClient
-from app.services.spotify import SpotifyClient
-
+from app.services.catalog import CatalogClient
 
 KO_MUSIC_SIGNALS = {
     "아이유",
@@ -50,15 +49,15 @@ JA_MUSIC_SIGNALS = {
 
 async def collect_candidates(
     parsed: ParsedQuery,
-    spotify: SpotifyClient,
+    catalog: CatalogClient,
     lastfm: LastFmClient,
 ) -> list[CandidateTrack]:
     if parsed.type == "mood":
-        candidates = await _collect_mood_candidates(parsed, spotify, lastfm)
+        candidates = await _collect_mood_candidates(parsed, catalog, lastfm)
         if candidates:
             return candidates
-        return await _spotify_candidates(
-            spotify,
+        return await _catalog_candidates(
+            catalog,
             " ".join(parsed.tags) or parsed.raw,
             fallback_tags=parsed.tags,
             raw_query=parsed.raw,
@@ -66,8 +65,8 @@ async def collect_candidates(
         )
 
     query = parsed.query or parsed.raw
-    candidates = await _spotify_candidates(
-        spotify,
+    candidates = await _catalog_candidates(
+        catalog,
         query,
         lastfm_candidates=parsed.lastfm_candidates,
         fallback_tags=parsed.tags,
@@ -79,8 +78,8 @@ async def collect_candidates(
 
     cleaned = _clean_query(query)
     if cleaned != query:
-        candidates = await _spotify_candidates(
-            spotify,
+        candidates = await _catalog_candidates(
+            catalog,
             cleaned,
             lastfm_candidates=parsed.lastfm_candidates,
             fallback_tags=parsed.tags,
@@ -94,12 +93,12 @@ async def collect_candidates(
     if not _should_try_mood_fallback(parsed.raw, fallback_tags):
         return []
     mood = ParsedQuery(type="mood", query=None, tags=fallback_tags, lastfm_candidates=[], raw=parsed.raw)
-    return await _collect_mood_candidates(mood, spotify, lastfm)
+    return await _collect_mood_candidates(mood, catalog, lastfm)
 
 
 async def _collect_mood_candidates(
     parsed: ParsedQuery,
-    spotify: SpotifyClient,
+    catalog: CatalogClient,
     lastfm: LastFmClient,
 ) -> list[CandidateTrack]:
     for tag in parsed.tags[:3]:
@@ -110,7 +109,7 @@ async def _collect_mood_candidates(
         top_tracks_to_map = top_tracks[:5]
         results = await asyncio.gather(
             *[
-                spotify.search_track_by_artist_title(item["artist"], item["title"])
+                catalog.search_track_by_artist_title(item["artist"], item["title"])
                 for item in top_tracks_to_map
             ],
             return_exceptions=True,
@@ -119,7 +118,7 @@ async def _collect_mood_candidates(
         for item, result in zip(top_tracks_to_map, results, strict=False):
             if isinstance(result, Exception) or result is None:
                 continue
-            candidate = spotify.normalize_track(result)
+            candidate = catalog.normalize_track(result)
             if candidate:
                 candidates.append(
                     _with_lookup_context(
@@ -136,16 +135,16 @@ async def _collect_mood_candidates(
     return []
 
 
-async def _spotify_candidates(
-    spotify: SpotifyClient,
+async def _catalog_candidates(
+    catalog: CatalogClient,
     query: str,
     lastfm_candidates: list[LastFmLookup] | None = None,
     fallback_tags: list[str] | None = None,
     raw_query: str = "",
     parsed_type: str = "direct",
 ) -> list[CandidateTrack]:
-    tracks = await spotify.search_tracks(query, limit=5)
-    candidates = [spotify.normalize_track(track) for track in tracks]
+    tracks = await catalog.search_tracks(query, limit=5)
+    candidates = [catalog.normalize_track(track) for track in tracks]
     return _dedupe(
         [
             _with_lookup_context(
@@ -165,9 +164,9 @@ def _dedupe(candidates: list[CandidateTrack]) -> list[CandidateTrack]:
     seen: set[str] = set()
     deduped: list[CandidateTrack] = []
     for candidate in candidates:
-        if candidate.spotifyId in seen:
+        if candidate.providerId in seen:
             continue
-        seen.add(candidate.spotifyId)
+        seen.add(candidate.providerId)
         deduped.append(candidate)
     return deduped
 

@@ -1,29 +1,18 @@
-# ── 웹 프레임워크 ──────────────────────────────────────────────
+﻿# ── 웹 프레임워크 ──────────────────────────────────────────────
 fastapi==0.115.0
 uvicorn[standard]==0.30.6   # ASGI 서버 (핫 리로드 포함)
 pydantic-settings==2.6.1
- 
-# ── Spotify API ────────────────────────────────────────────────
-# Step 2: 트랙 검색 / Step 3: popularity 수집 / Step 6: album art 보강
-spotipy==2.24.0             # Spotify Web API 공식 Python 클라이언트
-                            #   · Client Credentials Flow (인증 없이 검색)
-                            #   · OAuth2 Flow (플레이리스트 저장 - Phase 3)
- 
+
 # ── Last.fm API ────────────────────────────────────────────────
-# Step 3: track.getTopTags / Step 5: track.getSimilar, tag.getTopTracks
-pylast==5.3.0               # Last.fm API Python 클라이언트
-                            #   · track.getSimilar  → Algo A (match 최고값)
-                            #   · track.getSimilar  → Algo B (popularity 최저값)
-                            #   · tag.getTopTracks  → Algo C (반대 감성)
- 
-# ── 비동기 HTTP ────────────────────────────────────────────────
-requests==2.32.3            # spotipy 커스텀 세션 / 재시도 설정
-httpx==0.28.1               # Step 6 병렬 Spotify 정보 보강 등 raw async 호출
+pylast==5.3.0               # 유사곡, 태그, 태그별 인기 트랙 수집
+
+# ── 비동기 HTTP / 외부 카탈로그 ───────────────────────────────
+httpx==0.28.1               # iTunes / Deezer / Gemini 호출
 google-genai==1.45.0        # Gemini structured-output client package
- 
+
 # ── 캐싱 ──────────────────────────────────────────────────────
 redis[asyncio]==5.0.8       # API 응답 캐싱
- 
+
 # ── 유틸리티 ──────────────────────────────────────────────────
 python-dotenv==1.0.1        # .env 로드
 pydantic==2.8.2             # 요청/응답 스키마 검증

@@ -7,15 +7,14 @@ from app.pipeline.scorer import score_and_select
 from app.schemas.search import CandidateTrack, LastFmLookup, ParsedQuery, Tag, Track
 from app.services.lastfm import LastFmClient
 from app.services.llm import GeminiClient
-from app.services.spotify import SpotifyClient
-
+from app.services.catalog import CatalogClient
 
 LASTFM_TAG_TIMEOUT_SECONDS = 1.5
 
 
 async def search_pipeline(
     query: str,
-    spotify: SpotifyClient,
+    catalog: CatalogClient,
     lastfm: LastFmClient,
     llm: GeminiClient,
     timeout_seconds: float = 8.0,
@@ -26,7 +25,7 @@ async def search_pipeline(
         return await asyncio.wait_for(
             _search_pipeline(
                 query=query,
-                spotify=spotify,
+                catalog=catalog,
                 lastfm=lastfm,
                 llm=llm,
                 use_deterministic=use_deterministic,
@@ -40,7 +39,7 @@ async def search_pipeline(
 
 async def _search_pipeline(
     query: str,
-    spotify: SpotifyClient,
+    catalog: CatalogClient,
     lastfm: LastFmClient,
     llm: GeminiClient,
     use_deterministic: bool,
@@ -51,7 +50,7 @@ async def _search_pipeline(
     else:
         parsed = ParsedQuery(type="direct", query=query, tags=[], lastfm_candidates=[], raw=query)
 
-    candidates = await collect_candidates(parsed, spotify, lastfm)
+    candidates = await collect_candidates(parsed, catalog, lastfm)
     if not candidates:
         raise NoResultsError(query)
 

@@ -1,4 +1,4 @@
-from functools import lru_cache
+﻿from functools import lru_cache
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -11,8 +11,6 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    spotify_client_id: str | None = Field(default=None, validation_alias="SPOTIFY_CLIENT_ID")
-    spotify_client_secret: str | None = Field(default=None, validation_alias="SPOTIFY_CLIENT_SECRET")
     lastfm_api_key: str | None = Field(default=None, validation_alias="LASTFM_API_KEY")
     lastfm_api_secret: str | None = Field(default=None, validation_alias="LASTFM_API_SECRET")
     gemini_api_key: str | None = Field(default=None, validation_alias="GEMINI_API_KEY")

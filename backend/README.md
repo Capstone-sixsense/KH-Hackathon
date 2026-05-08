@@ -1,4 +1,4 @@
-# BE-1 Search Pipeline
+﻿# BE-1 Search Pipeline
 
 FastAPI backend for natural-language music search.
 
@@ -7,12 +7,13 @@ FastAPI backend for natural-language music search.
 Required for live API calls:
 
 ```env
-SPOTIFY_CLIENT_ID=
-SPOTIFY_CLIENT_SECRET=
 LASTFM_API_KEY=
+LASTFM_API_SECRET=
 GEMINI_API_KEY=
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3-flash-preview
 ```
+
+iTunes and Deezer are used as public catalog sources for search metadata and album art.
 
 ## Run
 
@@ -23,22 +24,22 @@ docker compose up -d --build
 Health check:
 
 ```powershell
-Invoke-RestMethod http://localhost:8000/health
+Invoke-RestMethod http://localhost:8001/health
 ```
 
-Search:
+Recommend:
 
 ```powershell
-Invoke-RestMethod http://localhost:8000/search `
+Invoke-RestMethod http://localhost:8001/recommend `
   -Method Post `
   -ContentType "application/json" `
-  -Body '{"query":"아이유의 너랑나"}'
+  -Body '{"query":"Younha Event Horizon"}'
 ```
 
 ## Shared imports for BE-2
 
 ```python
-from app.services.spotify import SpotifyClient
+from app.services.catalog import CatalogClient
 from app.services.lastfm import LastFmClient
 from app.schemas.search import SelectedTrack, Tag
 ```

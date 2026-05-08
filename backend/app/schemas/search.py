@@ -1,4 +1,4 @@
-from typing import Literal
+﻿from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -20,7 +20,7 @@ class LastFmLookup(BaseModel):
 
 
 class Track(BaseModel):
-    spotifyId: str = Field(..., min_length=1)
+    providerId: str = Field(..., min_length=1)
     artist: str = Field(..., min_length=1)
     title: str = Field(..., min_length=1)
     albumArt: str
@@ -40,7 +40,7 @@ class ParsedQuery(BaseModel):
 
 
 class CandidateTrack(BaseModel):
-    spotifyId: str = Field(..., min_length=1)
+    providerId: str = Field(..., min_length=1)
     artist: str = Field(..., min_length=1)
     title: str = Field(..., min_length=1)
     albumArt: str
@@ -51,7 +51,7 @@ class CandidateTrack(BaseModel):
 
     def to_track(self) -> Track:
         return Track(
-            spotifyId=self.spotifyId,
+            providerId=self.providerId,
             artist=self.artist,
             title=self.title,
             albumArt=self.albumArt,

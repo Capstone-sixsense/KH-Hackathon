@@ -6,15 +6,15 @@ from app.pipeline.orchestrator import enrich_all, search_pipeline
 from app.schemas.search import CandidateTrack, LastFmLookup, ParsedQuery, Tag, Track
 
 
-SPOTIFY_TRACK = {
-    "id": "spotify-track-1",
+CATALOG_TRACK = {
+    "id": "catalog-track-1",
     "name": "You and I",
     "artists": [{"name": "IU"}],
     "album": {"images": [{"url": "https://example.com/cover.jpg"}]},
     "popularity": 72,
 }
 
-BAD_SPOTIFY_TRACK = {
+BAD_CATALOG_TRACK = {
     "id": "bad-track-1",
     "name": "You and I (Park Bom)",
     "artists": [{"name": "2NE1"}],
@@ -22,7 +22,7 @@ BAD_SPOTIFY_TRACK = {
     "popularity": 90,
 }
 
-IU_SPOTIFY_TRACK = {
+IU_CATALOG_TRACK = {
     "id": "iu-track-1",
     "name": "You & I",
     "artists": [{"name": "IU"}],
@@ -31,21 +31,21 @@ IU_SPOTIFY_TRACK = {
 }
 
 
-class FakeSpotify:
+class FakeCatalog:
     def __init__(self):
         self.queries = []
 
     async def search_tracks(self, query, limit=5):
         self.queries.append(query)
-        return [SPOTIFY_TRACK]
+        return [CATALOG_TRACK]
 
     async def search_track_by_artist_title(self, artist, title):
-        return SPOTIFY_TRACK
+        return CATALOG_TRACK
 
     @staticmethod
     def normalize_track(track):
         return CandidateTrack(
-            spotifyId=track["id"],
+            providerId=track["id"],
             artist=track["artists"][0]["name"],
             title=track["name"],
             albumArt=track["album"]["images"][0]["url"],
@@ -98,7 +98,7 @@ class ForbiddenLlm:
         raise AssertionError("score_candidates should not be called")
 
 
-class EmptySpotify(FakeSpotify):
+class EmptyCatalog(FakeCatalog):
     async def search_tracks(self, query, limit=5):
         return []
 
@@ -111,10 +111,10 @@ class EmptyLastFm(FakeLastFm):
         return []
 
 
-class MultiResultSpotify(FakeSpotify):
+class MultiResultCatalog(FakeCatalog):
     async def search_tracks(self, query, limit=5):
         self.queries.append(query)
-        return [BAD_SPOTIFY_TRACK, IU_SPOTIFY_TRACK]
+        return [BAD_CATALOG_TRACK, IU_CATALOG_TRACK]
 
 
 class RecordingLastFm(FakeLastFm):
@@ -130,35 +130,35 @@ class RecordingLastFm(FakeLastFm):
 async def test_search_pipeline_returns_track_for_direct_query():
     result = await search_pipeline(
         "아이유의 너랑나",
-        spotify=FakeSpotify(),
+        catalog=FakeCatalog(),
         lastfm=FakeLastFm(),
         llm=FakeLlm(ParsedQuery(type="direct", query="너랑나 IU", tags=[], raw="아이유의 너랑나")),
     )
 
     Track.model_validate(result.model_dump())
-    assert result.spotifyId == "spotify-track-1"
+    assert result.providerId == "catalog-track-1"
     assert "k-pop" in [tag.name for tag in result.tags]
 
 
-async def test_search_pipeline_can_skip_llm_and_search_spotify_directly():
-    spotify = FakeSpotify()
+async def test_search_pipeline_can_skip_llm_and_search_catalog_directly():
+    catalog = FakeCatalog()
 
     result = await search_pipeline(
         "프로미스나인 DM",
-        spotify=spotify,
+        catalog=catalog,
         lastfm=FakeLastFm(),
         llm=ForbiddenLlm(),
         use_llm=False,
     )
 
-    assert result.spotifyId == "spotify-track-1"
-    assert spotify.queries == ["프로미스나인 DM"]
+    assert result.providerId == "catalog-track-1"
+    assert catalog.queries == ["프로미스나인 DM"]
 
 
 async def test_direct_query_reranks_artist_title_match_before_llm_choice():
     result = await search_pipeline(
         "아이유의 너랑나",
-        spotify=MultiResultSpotify(),
+        catalog=MultiResultCatalog(),
         lastfm=KoreanMissLastFm(),
         llm=FakeLlm(
             ParsedQuery(
@@ -174,21 +174,21 @@ async def test_direct_query_reranks_artist_title_match_before_llm_choice():
         ),
     )
 
-    assert result.spotifyId == "iu-track-1"
+    assert result.providerId == "iu-track-1"
     assert result.artist == "IU"
 
 
 async def test_search_pipeline_uses_lastfm_tag_path_for_mood_query():
-    spotify = FakeSpotify()
+    catalog = FakeCatalog()
     result = await search_pipeline(
         "새벽감성 음악",
-        spotify=spotify,
+        catalog=catalog,
         lastfm=FakeLastFm(),
         llm=FakeLlm(ParsedQuery(type="mood", query=None, tags=["chill"], raw="새벽감성 음악")),
     )
 
     assert result.artist == "IU"
-    assert spotify.queries == []
+    assert catalog.queries == []
 
 
 async def test_korean_mood_query_does_not_add_korean_fallback_tag_by_script_only():
@@ -199,14 +199,14 @@ async def test_korean_mood_query_does_not_add_korean_fallback_tag_by_script_only
             tags=["late-night", "chill"],
             raw="새벽감성 음악",
         ),
-        spotify=FakeSpotify(),
+        catalog=FakeCatalog(),
         lastfm=FakeLastFm(),
     )
 
     assert "korean" not in [tag.name for tag in candidates[0].fallback_tags]
 
 
-async def test_mood_tag_top_tracks_requests_five_candidates_before_spotify_mapping():
+async def test_mood_tag_top_tracks_requests_five_candidates_before_catalog_mapping():
     lastfm = RecordingLastFm()
     await collect_candidates(
         ParsedQuery(
@@ -215,7 +215,7 @@ async def test_mood_tag_top_tracks_requests_five_candidates_before_spotify_mappi
             tags=["focus"],
             raw="music for programming",
         ),
-        spotify=FakeSpotify(),
+        catalog=FakeCatalog(),
         lastfm=lastfm,
     )
 
@@ -226,7 +226,7 @@ async def test_search_pipeline_raises_no_results_when_all_fallbacks_fail():
     with pytest.raises(NoResultsError):
         await search_pipeline(
             "asdfqwer",
-            spotify=EmptySpotify(),
+            catalog=EmptyCatalog(),
             lastfm=EmptyLastFm(),
             llm=FakeLlm(ParsedQuery(type="direct", query="asdfqwer", tags=[], raw="asdfqwer")),
         )
@@ -234,7 +234,7 @@ async def test_search_pipeline_raises_no_results_when_all_fallbacks_fail():
 
 async def test_lastfm_tag_miss_keeps_empty_tags():
     candidate = CandidateTrack(
-        spotifyId="id",
+        providerId="id",
         artist="Artist",
         title="Title",
         albumArt="https://example.com/cover.jpg",
@@ -248,7 +248,7 @@ async def test_lastfm_tag_miss_keeps_empty_tags():
 
 async def test_enrich_uses_lastfm_lookup_candidates_before_korean_title():
     candidate = CandidateTrack(
-        spotifyId="id",
+        providerId="id",
         artist="BTS",
         title="봄날",
         albumArt="https://example.com/cover.jpg",
@@ -265,7 +265,7 @@ async def test_enrich_uses_lastfm_lookup_candidates_before_korean_title():
 
 async def test_enrich_uses_parser_fallback_tags_when_lastfm_has_no_tags():
     candidate = CandidateTrack(
-        spotifyId="id",
+        providerId="id",
         artist="IU",
         title="너랑나",
         albumArt="https://example.com/cover.jpg",
@@ -284,7 +284,7 @@ async def test_enrich_uses_parser_fallback_tags_when_lastfm_has_no_tags():
 async def test_direct_korean_context_adds_korean_fallback_tag():
     result = await search_pipeline(
         "아이유의 너랑나",
-        spotify=FakeSpotify(),
+        catalog=FakeCatalog(),
         lastfm=KoreanMissLastFm(),
         llm=FakeLlm(
             ParsedQuery(
@@ -309,7 +309,7 @@ async def test_japanese_context_adds_japanese_fallback_tag():
             lastfm_candidates=[LastFmLookup(artist="Joe Hisaishi", title="Merry-Go-Round of Life")],
             raw="지브리 인생의 회전목마",
         ),
-        spotify=FakeSpotify(),
+        catalog=FakeCatalog(),
         lastfm=KoreanMissLastFm(),
     )
 

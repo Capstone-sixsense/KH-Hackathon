@@ -18,7 +18,7 @@ async def search(request_body: SearchRequest, request: Request):
     try:
         return await search_pipeline(
             query=request_body.query,
-            spotify=request.app.state.spotify,
+            catalog=request.app.state.catalog,
             lastfm=request.app.state.lastfm,
             llm=request.app.state.llm,
             timeout_seconds=settings.search_timeout_seconds,
