@@ -1,17 +1,27 @@
 import 'package:flutter/material.dart';
+import 'package:khuthon/models/recommendation_models.dart';
 
 class ResultScreen extends StatelessWidget {
-  const ResultScreen({super.key, required this.keyword});
+  const ResultScreen({super.key, required this.keyword, required this.response});
 
   final String keyword;
+  final RecommendResponse response;
 
   @override
   Widget build(BuildContext context) {
-    const groups = [
-      _NodeData('의외로 낮은 유사도', 0.22, Offset(0.18, 0.20), Color(0xFFF472B6)),
-      _NodeData('개인 맞춤형 추천', 0.79, Offset(0.84, 0.34), Color(0xFF2DD4BF)),
-      _NodeData('기타 탐색', 0.56, Offset(0.72, 0.78), Color(0xFF64748B)),
-      _NodeData('소수 취향 확장', 0.68, Offset(0.28, 0.78), Color(0xFF60A5FA)),
+    final allTracks = <TrackRecommendation>[
+      ...response.similar,
+      ...response.reverse,
+      ...response.opposite,
+    ];
+    final mainTrack = allTracks.isNotEmpty
+        ? (allTracks..sort((a, b) => (b.reverseScore ?? 0).compareTo(a.reverseScore ?? 0))).first
+        : null;
+    final groups = [
+      _NodeData('의외로 낮은 유사도', response.reverse.length.toDouble(), const Offset(0.18, 0.20), const Color(0xFFF472B6)),
+      _NodeData('개인 맞춤형 추천', response.similar.length.toDouble(), const Offset(0.84, 0.34), const Color(0xFF2DD4BF)),
+      _NodeData('기타 탐색', response.opposite.length.toDouble(), const Offset(0.72, 0.78), const Color(0xFF64748B)),
+      _NodeData('소수 취향 확장', allTracks.length.toDouble(), const Offset(0.28, 0.78), const Color(0xFF60A5FA)),
     ];
 
     return Scaffold(
@@ -61,7 +71,7 @@ class ResultScreen extends StatelessWidget {
                             ),
                             Align(
                               alignment: const Alignment(0, -0.1),
-                              child: _MainTrackCard(keyword: keyword),
+                              child: _MainTrackCard(keyword: keyword, track: mainTrack),
                             ),
                             ...groups.map((node) {
                               return Positioned(
@@ -86,9 +96,10 @@ class ResultScreen extends StatelessWidget {
 }
 
 class _MainTrackCard extends StatelessWidget {
-  const _MainTrackCard({required this.keyword});
+  const _MainTrackCard({required this.keyword, required this.track});
 
   final String keyword;
+  final TrackRecommendation? track;
 
   @override
   Widget build(BuildContext context) {
@@ -108,22 +119,31 @@ class _MainTrackCard extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 120,
-            height: 120,
-            decoration: BoxDecoration(
+          if ((track?.albumArtUrl ?? '').isNotEmpty)
+            ClipRRect(
               borderRadius: BorderRadius.circular(14),
-              gradient: const LinearGradient(colors: [Color(0xFF111827), Color(0xFF4B5563)]),
-            ),
-            alignment: Alignment.center,
-            child: const Icon(Icons.music_note_rounded, size: 48, color: Colors.white),
-          ),
+              child: Image.network(
+                track!.albumArtUrl!,
+                width: 120,
+                height: 120,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _fallbackArt(),
+              ),
+            )
+          else
+            _fallbackArt(),
           const SizedBox(height: 12),
-          const Text('Night Transit', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          Text(track?.name ?? 'No Result', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
-          Text('for "$keyword"', style: const TextStyle(color: Color(0xFFA1A1AA), fontSize: 12)),
+          Text(
+            track == null ? 'for "$keyword"' : '${track!.artist} · "$keyword"',
+            style: const TextStyle(color: Color(0xFFA1A1AA), fontSize: 12),
+          ),
           const SizedBox(height: 8),
-          const Text('유사도 91%', style: TextStyle(color: Color(0xFF2DD4BF), fontWeight: FontWeight.w600)),
+          Text(
+            '점수 ${(track?.reverseScore ?? track?.matchScore ?? 0).toStringAsFixed(2)}',
+            style: const TextStyle(color: Color(0xFF2DD4BF), fontWeight: FontWeight.w600),
+          ),
           const SizedBox(height: 10),
           SizedBox(
             width: double.infinity,
@@ -138,6 +158,19 @@ class _MainTrackCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _fallbackArt() {
+    return Container(
+      width: 120,
+      height: 120,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        gradient: const LinearGradient(colors: [Color(0xFF111827), Color(0xFF4B5563)]),
+      ),
+      alignment: Alignment.center,
+      child: const Icon(Icons.music_note_rounded, size: 48, color: Colors.white),
     );
   }
 }
@@ -172,7 +205,7 @@ class _GroupNode extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '연관도 ${(node.score * 100).round()}%',
+            '${node.score.round()}곡',
             style: const TextStyle(fontSize: 11, color: Color(0xFFA1A1AA)),
           ),
         ],
