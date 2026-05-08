@@ -12,6 +12,7 @@ from fastapi import APIRouter, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from requests.adapters import HTTPAdapter
+from spotipy.cache_handler import MemoryCacheHandler
 from spotipy.oauth2 import SpotifyClientCredentials
 from urllib3.util.retry import Retry
 
@@ -156,7 +157,7 @@ def _get_recommend_clients(request: Request) -> tuple[spotipy.Spotify, pylast.La
     adapter = HTTPAdapter(
         pool_connections=50,
         pool_maxsize=50,
-        max_retries=Retry(total=3, backoff_factor=1),
+        max_retries=Retry(total=0),
     )
     session.mount("http://", adapter)
     session.mount("https://", adapter)
@@ -165,8 +166,12 @@ def _get_recommend_clients(request: Request) -> tuple[spotipy.Spotify, pylast.La
         auth_manager=SpotifyClientCredentials(
             client_id=settings.spotify_client_id,
             client_secret=settings.spotify_client_secret,
+            cache_handler=MemoryCacheHandler(),
         ),
         requests_session=session,
+        requests_timeout=10,
+        retries=0,
+        status_retries=0,
     )
     state.recommend_lastfm = pylast.LastFMNetwork(
         api_key=settings.lastfm_api_key,
