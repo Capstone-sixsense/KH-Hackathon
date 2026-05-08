@@ -17,6 +17,7 @@ class SearchScreen extends StatefulWidget {
 class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _controller = TextEditingController();
   final RecommendationApi _api = RecommendationApi();
+  static const Duration _dialogCloseDelay = Duration(milliseconds: 220);
 
   void _appendKeyword(String keyword) {
     final current = _controller.text.trim();
@@ -53,21 +54,58 @@ class _SearchScreenState extends State<SearchScreen> {
       if (!mounted) {
         return;
       }
-      Navigator.of(context).pop();
+      await _closeLoadingDialogWithDelay();
+      if (!mounted) {
+        return;
+      }
       await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => ResultScreen(keyword: keyword, response: response),
+        PageRouteBuilder<void>(
+          transitionDuration: const Duration(milliseconds: 760),
+          reverseTransitionDuration: const Duration(milliseconds: 560),
+          pageBuilder: (_, animation, secondaryAnimation) =>
+              ResultScreen(keyword: keyword, response: response),
+          transitionsBuilder: (_, animation, secondaryAnimation, child) {
+            final slideAnimation = Tween<Offset>(
+              begin: const Offset(0.12, 0),
+              end: Offset.zero,
+            ).animate(
+              CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeInOutCubicEmphasized,
+              ),
+            );
+            final fadeAnimation = CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeInOutCubicEmphasized,
+            );
+            return FadeTransition(
+              opacity: fadeAnimation,
+              child: SlideTransition(
+                position: slideAnimation,
+                child: child,
+              ),
+            );
+          },
         ),
       );
     } catch (e) {
       if (!mounted) {
         return;
       }
-      Navigator.of(context).pop();
+      await _closeLoadingDialogWithDelay();
+      if (!mounted) {
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('추천 결과를 불러오지 못했습니다: $e')),
       );
     }
+  }
+
+  Future<void> _closeLoadingDialogWithDelay() async {
+    Navigator.of(context, rootNavigator: true).pop();
+    // 다이얼로그 종료 애니메이션이 끝난 뒤 다음 전환을 시작한다.
+    await Future<void>.delayed(_dialogCloseDelay);
   }
 
   (String, String) _parseInput(String keyword) {
@@ -166,7 +204,11 @@ class _SearchScreenState extends State<SearchScreen> {
                                   hintText: '키워드로 음악을 탐색해 보세요',
                                   hintStyle: TextStyle(color: Color(0xFFA1A1AA)),
                                   border: InputBorder.none,
-                                  icon: Icon(Icons.search_rounded, color: Color(0xFF94A3B8)),
+                                  prefixIcon: Icon(Icons.search_rounded, color: Color(0xFF94A3B8)),
+                                  prefixIconConstraints: BoxConstraints(minWidth: 40, minHeight: 40),
+                                  // Keep left/right visual weight balanced for true center alignment.
+                                  suffixIcon: SizedBox(width: 40),
+                                  suffixIconConstraints: BoxConstraints(minWidth: 40, minHeight: 40),
                                 ),
                               ),
                             ),
