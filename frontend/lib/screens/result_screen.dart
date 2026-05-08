@@ -454,23 +454,44 @@ class _GroupTracksScreenState extends State<_GroupTracksScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.title),
-      ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
-            child: Text(widget.subtitle, style: const TextStyle(color: Color(0xFFA1A1AA))),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-            child: Text(
-              '총 ${widget.tracks.length}곡',
-              style: TextStyle(color: widget.color, fontWeight: FontWeight.w700),
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 12, 16, 14),
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.title,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '총 ${widget.tracks.length}곡',
+                          style: TextStyle(
+                            color: widget.color,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
           Center(
             child: Container(
               margin: const EdgeInsets.only(bottom: 12),
@@ -532,7 +553,8 @@ class _GroupTracksScreenState extends State<_GroupTracksScreen> {
                         },
                       ),
           ),
-        ],
+          ],
+        ),
       ),
     );
   }
