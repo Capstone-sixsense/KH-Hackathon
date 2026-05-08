@@ -35,7 +35,7 @@ OPTIONAL = [
 def default_base_url() -> str:
     if Path("/.dockerenv").exists():
         return "http://localhost:8000"
-    return "http://localhost:8001"
+    return "http://localhost:8000"
 
 
 async def main() -> None:

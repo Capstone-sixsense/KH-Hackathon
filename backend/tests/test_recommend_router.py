@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from app.main import app
 from app.routers import recommend as recommend_router
 from app.routers.recommend import RecommendRequest, RecommendResponse
+from main import app
 
 
 def test_recommend_route_is_registered():
