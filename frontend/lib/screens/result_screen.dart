@@ -66,9 +66,7 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
       ...widget.response.reverse,
       ...widget.response.opposite,
     ];
-    final mainTrack = allTracks.isNotEmpty
-        ? (allTracks..sort((a, b) => (b.reverseScore ?? 0).compareTo(a.reverseScore ?? 0))).first
-        : null;
+    final mainTrack = _buildMainTrack(allTracks);
     final groups = [
       _NodeData(
         label: '의외로 낮은 유사도',
@@ -162,7 +160,7 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
                                         opacity: _mainCardOpacity,
                                         child: ScaleTransition(
                                           scale: _mainCardScale,
-                                          child: _MainTrackCard(track: mainTrack),
+                                          child: _MainTrackCard(mainTrack: mainTrack),
                                         ),
                                       ),
                                     ),
@@ -230,6 +228,28 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
     return spaceTokens;
   }
 
+  _MainTrackData _buildMainTrack(List<TrackRecommendation> allTracks) {
+    final baseName = widget.response.trackName.trim();
+    final baseArtist = widget.response.artist.trim();
+
+    String? albumArtUrl;
+    for (final track in allTracks) {
+      final sameTitle = track.name.trim().toLowerCase() == baseName.toLowerCase();
+      final sameArtist = track.artist.trim().toLowerCase() == baseArtist.toLowerCase();
+      if (sameTitle && sameArtist) {
+        albumArtUrl = track.albumArtUrl;
+        break;
+      }
+    }
+
+    return _MainTrackData(
+      title: baseName.isEmpty ? 'No Result' : baseName,
+      artist: baseArtist.isEmpty ? '아티스트 정보 없음' : baseArtist,
+      albumArtUrl: albumArtUrl,
+      hasResult: baseName.isNotEmpty && baseArtist.isNotEmpty,
+    );
+  }
+
   Future<void> _openGroupTracks(BuildContext context, _NodeData node) async {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -246,8 +266,8 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
 }
 
 class _MainTrackCard extends StatelessWidget {
-  const _MainTrackCard({required this.track});
-  final TrackRecommendation? track;
+  const _MainTrackCard({required this.mainTrack});
+  final _MainTrackData mainTrack;
 
   @override
   Widget build(BuildContext context) {
@@ -267,11 +287,11 @@ class _MainTrackCard extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if ((track?.albumArtUrl ?? '').isNotEmpty)
+          if ((mainTrack.albumArtUrl ?? '').isNotEmpty)
             ClipRRect(
               borderRadius: BorderRadius.circular(14),
               child: Image.network(
-                track!.albumArtUrl!,
+                mainTrack.albumArtUrl!,
                 width: 120,
                 height: 120,
                 fit: BoxFit.cover,
@@ -281,10 +301,10 @@ class _MainTrackCard extends StatelessWidget {
           else
             _fallbackArt(),
           const SizedBox(height: 12),
-          Text(track?.name ?? 'No Result', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          Text(mainTrack.title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
           Text(
-            track == null ? '추천 결과를 찾지 못했어요' : track!.artist,
+            mainTrack.hasResult ? mainTrack.artist : '추천 결과를 찾지 못했어요',
             style: const TextStyle(color: Color(0xFFA1A1AA), fontSize: 12),
           ),
           const SizedBox(height: 10),
@@ -316,6 +336,20 @@ class _MainTrackCard extends StatelessWidget {
       child: const Icon(Icons.music_note_rounded, size: 48, color: Colors.white),
     );
   }
+}
+
+class _MainTrackData {
+  const _MainTrackData({
+    required this.title,
+    required this.artist,
+    required this.albumArtUrl,
+    required this.hasResult,
+  });
+
+  final String title;
+  final String artist;
+  final String? albumArtUrl;
+  final bool hasResult;
 }
 
 class _SearchTagBar extends StatelessWidget {
