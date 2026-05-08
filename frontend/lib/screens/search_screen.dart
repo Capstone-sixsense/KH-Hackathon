@@ -20,13 +20,13 @@ class _SearchScreenState extends State<SearchScreen> {
   static const Duration _dialogCloseDelay = Duration(milliseconds: 220);
   static const int _maxHistoryCount = 8;
   static const List<Color> _historyPastelColors = [
-    Color(0xFFF6E8E9),
-    Color(0xFFEAF4E2),
-    Color(0xFFE7F3FC),
-    Color(0xFFF0E8FB),
-    Color(0xFFFFF0DC),
-    Color(0xFFEAF7F1),
-    Color(0xFFF1F5F9),
+    Color(0xFFFFF3B0),
+    Color(0xFFFFE8A3),
+    Color(0xFFFFF0C7),
+    Color(0xFFF8E7A1),
+    Color(0xFFFFECB5),
+    Color(0xFFF6E7B5),
+    Color(0xFFFFF6CC),
   ];
   final List<String> _searchHistory = [];
 
@@ -85,28 +85,26 @@ class _SearchScreenState extends State<SearchScreen> {
       }
       await Navigator.of(context).push(
         PageRouteBuilder<void>(
-          transitionDuration: const Duration(milliseconds: 760),
-          reverseTransitionDuration: const Duration(milliseconds: 560),
+          transitionDuration: const Duration(milliseconds: 420),
+          reverseTransitionDuration: const Duration(milliseconds: 300),
           pageBuilder: (_, animation, secondaryAnimation) =>
               ResultScreen(keyword: keyword, response: response),
           transitionsBuilder: (_, animation, secondaryAnimation, child) {
-            final slideAnimation =
-                Tween<Offset>(
-                  begin: const Offset(0.12, 0),
-                  end: Offset.zero,
-                ).animate(
-                  CurvedAnimation(
-                    parent: animation,
-                    curve: Curves.easeInOutCubicEmphasized,
-                  ),
-                );
-            final fadeAnimation = CurvedAnimation(
+            final curvedAnimation = CurvedAnimation(
               parent: animation,
-              curve: Curves.easeInOutCubicEmphasized,
+              curve: Curves.easeOutCubic,
+              reverseCurve: Curves.easeInCubic,
+            );
+            final scaleAnimation = Tween<double>(begin: 0.96, end: 1).animate(
+              CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+                reverseCurve: Curves.easeInCubic,
+              ),
             );
             return FadeTransition(
-              opacity: fadeAnimation,
-              child: SlideTransition(position: slideAnimation, child: child),
+              opacity: curvedAnimation,
+              child: ScaleTransition(scale: scaleAnimation, child: child),
             );
           },
         ),
@@ -243,6 +241,11 @@ class _SearchScreenState extends State<SearchScreen> {
                   top: center.dy - (labelSize / 2),
                   child: _buildHomeRecordLabel(labelSize),
                 ),
+                ..._buildHistoryPostIts(
+                  constraints: constraints,
+                  center: center,
+                  recordRadius: recordRadius,
+                ),
               ],
             );
           },
@@ -305,7 +308,7 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
               SizedBox(height: compact ? 4 : 8),
               Text(
-                '메이저 바깥의 음악을 발견하는 탐색기',
+                '들리지 않던 쪽으로, 취향의 이면을 넘기다',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: const Color(0xFF4B371C),
@@ -357,67 +360,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 ),
               ),
               SizedBox(height: verticalGap),
-              if (_searchHistory.isNotEmpty) ...[
-                SizedBox(
-                  width: contentWidth,
-                  child: const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      '최근 검색',
-                      style: TextStyle(
-                        color: Color(0xFF6A4B24),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: contentWidth,
-                  child: Wrap(
-                    alignment: WrapAlignment.center,
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: _searchHistory
-                        .take(compact ? 4 : _searchHistory.length)
-                        .toList()
-                        .asMap()
-                        .entries
-                        .map(
-                          (entry) => InkWell(
-                            borderRadius: BorderRadius.circular(10),
-                            onTap: () =>
-                                setState(() => _appendKeyword(entry.value)),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 7,
-                              ),
-                              decoration: BoxDecoration(
-                                color:
-                                    _historyPastelColors[entry.key %
-                                            _historyPastelColors.length]
-                                        .withValues(alpha: 0.72),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Text(
-                                entry.value,
-                                style: const TextStyle(
-                                  color: Color(0xFF1F2937),
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ),
-                SizedBox(height: verticalGap),
-              ] else
-                SizedBox(height: compact ? 8 : labelSize * 0.04),
+              SizedBox(height: compact ? 8 : labelSize * 0.04),
               SizedBox(
                 width: math.min(contentWidth * 0.62, 220),
                 child: FilledButton(
@@ -443,6 +386,141 @@ class _SearchScreenState extends State<SearchScreen> {
       ),
     );
   }
+
+  List<Widget> _buildHistoryPostIts({
+    required BoxConstraints constraints,
+    required Offset center,
+    required double recordRadius,
+  }) {
+    if (_searchHistory.isEmpty) {
+      return const [];
+    }
+
+    final sideSpace = ((constraints.maxWidth - (recordRadius * 2)) / 2) - 20;
+    final useSideColumns = sideSpace >= 128;
+    final noteWidth = useSideColumns
+        ? sideSpace.clamp(150.0, 230.0).toDouble()
+        : (constraints.maxWidth * 0.4).clamp(132.0, 190.0).toDouble();
+    final notes = _searchHistory.reversed.take(useSideColumns ? 8 : 4).toList();
+    final leftX = (center.dx - recordRadius - noteWidth - 18)
+        .clamp(12.0, constraints.maxWidth - noteWidth - 12)
+        .toDouble();
+    final rightX = (center.dx + recordRadius + 18)
+        .clamp(12.0, constraints.maxWidth - noteWidth - 12)
+        .toDouble();
+    final fallbackLeftX = (center.dx - noteWidth - 14)
+        .clamp(12.0, constraints.maxWidth - noteWidth - 12)
+        .toDouble();
+    final fallbackRightX = (center.dx + 14)
+        .clamp(12.0, constraints.maxWidth - noteWidth - 12)
+        .toDouble();
+    final baseY = (center.dy - (recordRadius * 0.86))
+        .clamp(18.0, constraints.maxHeight - 70)
+        .toDouble();
+    final leftColumnCapacity = useSideColumns ? 4 : 2;
+    const angles = [-0.08, 0.055, -0.045, 0.075, -0.065, 0.045, -0.035, 0.06];
+    const offsets = [0.0, 12.0, -5.0, 15.0, 2.0, -7.0, 11.0, -3.0];
+
+    return List.generate(notes.length, (index) {
+      final leftSide = index < leftColumnCapacity;
+      final sideIndex = leftSide ? index : index - leftColumnCapacity;
+      final x = useSideColumns
+          ? (leftSide ? leftX : rightX)
+          : (leftSide ? fallbackLeftX : fallbackRightX);
+      final y = (baseY + (sideIndex * 86) + offsets[index % offsets.length])
+          .clamp(16.0, constraints.maxHeight - 76)
+          .toDouble();
+      return Positioned(
+        left: x,
+        top: y,
+        child: _HistoryPostIt(
+          text: notes[index],
+          width: noteWidth,
+          color: _historyPastelColors[index % _historyPastelColors.length],
+          angle: angles[index % angles.length],
+          onTap: () => setState(() => _appendKeyword(notes[index])),
+        ),
+      );
+    });
+  }
+}
+
+class _HistoryPostIt extends StatelessWidget {
+  const _HistoryPostIt({
+    required this.text,
+    required this.width,
+    required this.color,
+    required this.angle,
+    required this.onTap,
+  });
+
+  final String text;
+  final double width;
+  final Color color;
+  final double angle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Transform.rotate(
+      angle: angle,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: width,
+          constraints: const BoxConstraints(minHeight: 46),
+          padding: const EdgeInsets.fromLTRB(16, 11, 14, 10),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.9),
+            borderRadius: BorderRadius.circular(5),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.52),
+              width: 1,
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x66000000),
+                blurRadius: 12,
+                offset: Offset(0, 7),
+              ),
+            ],
+          ),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned(
+                left: width * 0.32,
+                top: -19,
+                child: Transform.rotate(
+                  angle: -angle * 0.65,
+                  child: Container(
+                    width: width * 0.34,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFDE68A).withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                ),
+              ),
+              Text(
+                text,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF1F2937),
+                  fontFamily: 'OK_Mallang_Font',
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _HomeTurntablePainter extends CustomPainter {
@@ -453,33 +531,6 @@ class _HomeTurntablePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final deckRect = Rect.fromLTWH(
-      center.dx - radius * 1.28,
-      center.dy - radius * 1.2,
-      radius * 2.56,
-      radius * 2.42,
-    );
-    final deckRRect = RRect.fromRectAndRadius(
-      deckRect,
-      Radius.circular(radius * 0.16),
-    );
-    canvas.drawRRect(
-      deckRRect,
-      Paint()
-        ..shader = const LinearGradient(
-          colors: [Color(0xFF171720), Color(0xFF0C0C11)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ).createShader(deckRect),
-    );
-    canvas.drawRRect(
-      deckRRect,
-      Paint()
-        ..color = Colors.white.withValues(alpha: 0.06)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1,
-    );
-
     canvas.drawCircle(
       center.translate(0, 18),
       radius * 1.02,
@@ -490,8 +541,8 @@ class _HomeTurntablePainter extends CustomPainter {
       radius,
       Paint()
         ..shader = const RadialGradient(
-          colors: [Color(0xFF31313B), Color(0xFF111118), Color(0xFF030305)],
-          stops: [0.0, 0.5, 1],
+          colors: [Color(0xFF30303A), Color(0xFF111118), Color(0xFF050507)],
+          stops: [0.0, 0.46, 1.0],
         ).createShader(Rect.fromCircle(center: center, radius: radius)),
     );
     canvas.drawCircle(
@@ -524,69 +575,6 @@ class _HomeTurntablePainter extends CustomPainter {
       center,
       radius * 0.024,
       Paint()..color = const Color(0xFF2DD4BF),
-    );
-
-    final coverRect = deckRect.deflate(radius * 0.055);
-    final coverRRect = RRect.fromRectAndRadius(
-      coverRect,
-      Radius.circular(radius * 0.13),
-    );
-    canvas.drawRRect(
-      coverRRect,
-      Paint()
-        ..shader = LinearGradient(
-          colors: [
-            const Color(0xFFB8D9E4).withValues(alpha: 0.18),
-            const Color(0xFFE5F3F8).withValues(alpha: 0.08),
-            const Color(0xFF475569).withValues(alpha: 0.14),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ).createShader(coverRect),
-    );
-    canvas.drawRRect(
-      coverRRect,
-      Paint()
-        ..color = const Color(0xFFD8F4FF).withValues(alpha: 0.26)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.4,
-    );
-
-    final topGlare = Path()
-      ..moveTo(coverRect.left + radius * 0.2, coverRect.top + radius * 0.18)
-      ..lineTo(coverRect.right - radius * 0.22, coverRect.top + radius * 0.05)
-      ..lineTo(coverRect.right - radius * 0.34, coverRect.top + radius * 0.22)
-      ..lineTo(coverRect.left + radius * 0.08, coverRect.top + radius * 0.36)
-      ..close();
-    canvas.drawPath(
-      topGlare,
-      Paint()..color = Colors.white.withValues(alpha: 0.08),
-    );
-
-    final diagonalGlare = Path()
-      ..moveTo(coverRect.left + radius * 0.22, coverRect.bottom - radius * 0.2)
-      ..lineTo(coverRect.right - radius * 0.44, coverRect.top + radius * 0.12)
-      ..lineTo(coverRect.right - radius * 0.31, coverRect.top + radius * 0.2)
-      ..lineTo(coverRect.left + radius * 0.35, coverRect.bottom - radius * 0.1)
-      ..close();
-    canvas.drawPath(
-      diagonalGlare,
-      Paint()..color = Colors.white.withValues(alpha: 0.055),
-    );
-
-    final hingePaint = Paint()
-      ..color = const Color(0xFF475569).withValues(alpha: 0.92)
-      ..strokeWidth = radius * 0.035
-      ..strokeCap = StrokeCap.round;
-    canvas.drawLine(
-      Offset(coverRect.left + radius * 0.18, coverRect.top + radius * 0.02),
-      Offset(coverRect.left + radius * 0.48, coverRect.top + radius * 0.02),
-      hingePaint,
-    );
-    canvas.drawLine(
-      Offset(coverRect.right - radius * 0.48, coverRect.top + radius * 0.02),
-      Offset(coverRect.right - radius * 0.18, coverRect.top + radius * 0.02),
-      hingePaint,
     );
   }
 

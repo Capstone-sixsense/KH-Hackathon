@@ -178,14 +178,14 @@ class _ResultScreenState extends State<ResultScreen>
                               ),
                             ),
                             Positioned(
-                              left: center.dx + (recordRadius * 0.32),
-                              top: center.dy - (recordRadius * 0.72),
+                              left: center.dx + (recordRadius * 0.31),
+                              top: center.dy - (recordRadius * 0.74),
                               child: IgnorePointer(
                                 child: TurntableTonearm(
-                                  size: recordRadius * 0.46,
-                                  accent: const Color(0xFFD6B986),
-                                  opacity: 0.92,
-                                  rotation: -0.08,
+                                  size: recordRadius * 0.62,
+                                  accent: const Color(0xFFF472B6),
+                                  opacity: 0.94,
+                                  rotation: -0.06,
                                 ),
                               ),
                             ),
