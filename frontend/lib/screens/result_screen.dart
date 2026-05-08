@@ -3,18 +3,68 @@ import 'package:khuthon/models/recommendation_models.dart';
 
 enum _TrackViewMode { gallery, list }
 
-class ResultScreen extends StatelessWidget {
+class ResultScreen extends StatefulWidget {
   const ResultScreen({super.key, required this.keyword, required this.response});
 
   final String keyword;
   final RecommendResponse response;
 
   @override
+  State<ResultScreen> createState() => _ResultScreenState();
+}
+
+class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderStateMixin {
+  late final AnimationController _introController;
+  late final Animation<double> _mainCardOpacity;
+  late final Animation<double> _mainCardScale;
+  late final Animation<double> _edgeProgress;
+
+  @override
+  void initState() {
+    super.initState();
+    _introController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 3360),
+    );
+    _mainCardOpacity = CurvedAnimation(
+      parent: _introController,
+      curve: const Interval(0.0, 0.18, curve: Curves.easeOutCubic),
+    );
+    _mainCardScale = Tween<double>(
+      begin: 0.94,
+      end: 1.0,
+    ).animate(
+      CurvedAnimation(
+        parent: _introController,
+        curve: const Interval(0.0, 0.2, curve: Curves.easeOutCubic),
+      ),
+    );
+    _edgeProgress = CurvedAnimation(
+      parent: _introController,
+      curve: const Interval(0.24, 0.86, curve: Curves.easeInOutCubic),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>.delayed(const Duration(milliseconds: 520), () {
+        if (!mounted) {
+          return;
+        }
+        _introController.forward(from: 0);
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _introController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final allTracks = <TrackRecommendation>[
-      ...response.similar,
-      ...response.reverse,
-      ...response.opposite,
+      ...widget.response.similar,
+      ...widget.response.reverse,
+      ...widget.response.opposite,
     ];
     final mainTrack = allTracks.isNotEmpty
         ? (allTracks..sort((a, b) => (b.reverseScore ?? 0).compareTo(a.reverseScore ?? 0))).first
@@ -23,26 +73,26 @@ class ResultScreen extends StatelessWidget {
       _NodeData(
         label: '의외로 낮은 유사도',
         description: '반대 감성 기반 추천',
-        score: response.reverse.length.toDouble(),
+        score: widget.response.reverse.length.toDouble(),
         anchor: const Offset(0.18, 0.20),
         color: const Color(0xFFD38FB4),
-        tracks: response.reverse,
+        tracks: widget.response.reverse,
       ),
       _NodeData(
         label: '개인 맞춤형 추천',
         description: '비슷한 청취 패턴 추천',
-        score: response.similar.length.toDouble(),
+        score: widget.response.similar.length.toDouble(),
         anchor: const Offset(0.84, 0.34),
         color: const Color(0xFF7CBFB3),
-        tracks: response.similar,
+        tracks: widget.response.similar,
       ),
       _NodeData(
         label: '기타 탐색',
         description: '감성 반대편 탐색',
-        score: response.opposite.length.toDouble(),
+        score: widget.response.opposite.length.toDouble(),
         anchor: const Offset(0.72, 0.78),
         color: const Color(0xFF8A95A6),
-        tracks: response.opposite,
+        tracks: widget.response.opposite,
       ),
       _NodeData(
         label: '소수 취향 확장',
@@ -82,7 +132,7 @@ class ResultScreen extends StatelessWidget {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          '"$keyword" 탐색 결과',
+                          '"${widget.keyword}" 탐색 결과',
                           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                         ),
                       ),
@@ -95,24 +145,52 @@ class ResultScreen extends StatelessWidget {
                         final center = Offset(constraints.maxWidth * 0.5, constraints.maxHeight * 0.46);
                         return Stack(
                           children: [
-                            CustomPaint(
-                              size: Size(constraints.maxWidth, constraints.maxHeight),
-                              painter: _GraphEdgePainter(center: center, nodes: groups),
+                            AnimatedBuilder(
+                              animation: _introController,
+                              builder: (context, _) {
+                                return Stack(
+                                  children: [
+                                    CustomPaint(
+                                      size: Size(constraints.maxWidth, constraints.maxHeight),
+                                      painter: _GraphEdgePainter(
+                                        center: center,
+                                        nodes: groups,
+                                        progress: _edgeProgress.value,
+                                      ),
+                                    ),
+                                    Align(
+                                      alignment: const Alignment(0, -0.1),
+                                      child: FadeTransition(
+                                        opacity: _mainCardOpacity,
+                                        child: ScaleTransition(
+                                          scale: _mainCardScale,
+                                          child: _MainTrackCard(keyword: widget.keyword, track: mainTrack),
+                                        ),
+                                      ),
+                                    ),
+                                    ...groups.asMap().entries.map((entry) {
+                                      final node = entry.value;
+                                      final nodeProgress = _nodeProgress(entry.key);
+                                      final nodeTranslateY = (1 - nodeProgress) * 14;
+                                      return Positioned(
+                                        left: constraints.maxWidth * node.anchor.dx - 74,
+                                        top: constraints.maxHeight * node.anchor.dy - 62,
+                                        child: Opacity(
+                                          opacity: nodeProgress,
+                                          child: Transform.translate(
+                                            offset: Offset(0, nodeTranslateY),
+                                            child: _GroupNode(
+                                              node: node,
+                                              onTap: () => _openGroupTracks(context, node),
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }),
+                                  ],
+                                );
+                              },
                             ),
-                            Align(
-                              alignment: const Alignment(0, -0.1),
-                              child: _MainTrackCard(keyword: keyword, track: mainTrack),
-                            ),
-                            ...groups.map((node) {
-                              return Positioned(
-                                left: constraints.maxWidth * node.anchor.dx - 74,
-                                top: constraints.maxHeight * node.anchor.dy - 62,
-                                child: _GroupNode(
-                                  node: node,
-                                  onTap: () => _openGroupTracks(context, node),
-                                ),
-                              );
-                            }),
                           ],
                         );
                       },
@@ -125,6 +203,16 @@ class ResultScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  double _nodeProgress(int index) {
+    const baseStart = 0.88;
+    const step = 0.03;
+    const span = 0.11;
+    final start = baseStart + (index * step);
+    final end = (start + span).clamp(0.0, 1.0);
+    final t = ((_introController.value - start) / (end - start)).clamp(0.0, 1.0);
+    return Curves.easeOutCubic.transform(t);
   }
 
   Future<void> _openGroupTracks(BuildContext context, _NodeData node) async {
@@ -307,10 +395,11 @@ class _GroupNodeState extends State<_GroupNode> {
 }
 
 class _GraphEdgePainter extends CustomPainter {
-  _GraphEdgePainter({required this.center, required this.nodes});
+  _GraphEdgePainter({required this.center, required this.nodes, required this.progress});
 
   final Offset center;
   final List<_NodeData> nodes;
+  final double progress;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -324,18 +413,39 @@ class _GraphEdgePainter extends CustomPainter {
       final path = Path()
         ..moveTo(center.dx, center.dy)
         ..quadraticBezierTo(control.dx, control.dy, end.dx, end.dy);
-      final paint = Paint()
-        ..color = node.color.withValues(alpha: 0.24)
-        ..strokeWidth = 0.8 + (node.score * 1.5)
+      final baseStrokeWidth = 1.0 + (node.score * 1.25);
+
+      final metrics = path.computeMetrics().toList();
+      if (metrics.isEmpty) {
+        continue;
+      }
+      final metric = metrics.first;
+      final clampedProgress = progress.clamp(0.0, 1.0);
+      if (clampedProgress <= 0.001) {
+        continue;
+      }
+      final animatedPath = metric.extractPath(0, metric.length * clampedProgress);
+      final animatedPaint = Paint()
+        ..color = node.color.withValues(alpha: 0.2)
+        ..strokeWidth = baseStrokeWidth + 0.3
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round;
-      canvas.drawPath(path, paint);
+      canvas.drawPath(animatedPath, animatedPaint);
+
+      if (clampedProgress >= 0.999) {
+        final basePaint = Paint()
+          ..color = node.color.withValues(alpha: 0.2)
+          ..strokeWidth = baseStrokeWidth
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round;
+        canvas.drawPath(path, basePaint);
+      }
     }
   }
 
   @override
   bool shouldRepaint(covariant _GraphEdgePainter oldDelegate) {
-    return oldDelegate.center != center || oldDelegate.nodes != nodes;
+    return oldDelegate.center != center || oldDelegate.nodes != nodes || oldDelegate.progress != progress;
   }
 }
 
@@ -454,23 +564,44 @@ class _GroupTracksScreenState extends State<_GroupTracksScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.title),
-      ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
-            child: Text(widget.subtitle, style: const TextStyle(color: Color(0xFFA1A1AA))),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-            child: Text(
-              '총 ${widget.tracks.length}곡',
-              style: TextStyle(color: widget.color, fontWeight: FontWeight.w700),
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 12, 16, 14),
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.title,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '총 ${widget.tracks.length}곡',
+                          style: TextStyle(
+                            color: widget.color,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
           Center(
             child: Container(
               margin: const EdgeInsets.only(bottom: 12),
@@ -532,7 +663,8 @@ class _GroupTracksScreenState extends State<_GroupTracksScreen> {
                         },
                       ),
           ),
-        ],
+          ],
+        ),
       ),
     );
   }
