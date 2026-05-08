@@ -1,6 +1,9 @@
 import asyncio
+import importlib.util
 import logging
+import sys
 from dataclasses import asdict
+from pathlib import Path
 
 import pylast
 import requests
@@ -12,15 +15,39 @@ from requests.adapters import HTTPAdapter
 from spotipy.oauth2 import SpotifyClientCredentials
 from urllib3.util.retry import Retry
 
-from recommend_algo import (
-    hidden_discovery,
-    normalize_input,
-    opposite_emotion,
-    reverse_top100,
-    similar_listening_pattern,
-)
-
 logger = logging.getLogger(__name__)
+
+_RECOMMEND_ALGO_PATH = Path(__file__).resolve().parents[2] / "recommend_algo.py"
+
+
+def _module_file_matches(module: object, path: Path) -> bool:
+    module_file = getattr(module, "__file__", None)
+    if not module_file:
+        return False
+    return Path(module_file).resolve() == path
+
+
+def _load_recommend_algo():
+    existing = sys.modules.get("recommend_algo")
+    if existing and _module_file_matches(existing, _RECOMMEND_ALGO_PATH):
+        return existing
+
+    spec = importlib.util.spec_from_file_location("recommend_algo", _RECOMMEND_ALGO_PATH)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot load recommend_algo from {_RECOMMEND_ALGO_PATH}")
+
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["recommend_algo"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+recommend_algo = _load_recommend_algo()
+hidden_discovery = recommend_algo.hidden_discovery
+normalize_input = recommend_algo.normalize_input
+opposite_emotion = recommend_algo.opposite_emotion
+reverse_top100 = recommend_algo.reverse_top100
+similar_listening_pattern = recommend_algo.similar_listening_pattern
 
 router = APIRouter()
 

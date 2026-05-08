@@ -1,4 +1,7 @@
+from pathlib import Path
+
 from app.main import app
+from app.routers import recommend as recommend_router
 from app.routers.recommend import RecommendRequest, RecommendResponse
 
 
@@ -23,3 +26,11 @@ def test_recommend_contract_uses_query_and_hidden_bucket():
     assert request.query == "아이유 너랑나"
     assert response.result["hidden"] == []
     assert response.spotify_id == "spotify-id"
+
+
+def test_recommend_router_loads_backend_recommend_algo_file():
+    loaded_path = Path(recommend_router.recommend_algo.__file__).resolve()
+
+    assert loaded_path == recommend_router._RECOMMEND_ALGO_PATH
+    assert recommend_router.reverse_top100 is recommend_router.recommend_algo.reverse_top100
+    assert recommend_router.similar_listening_pattern is recommend_router.recommend_algo.similar_listening_pattern
