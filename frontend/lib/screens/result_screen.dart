@@ -72,7 +72,7 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
     final groups = [
       _NodeData(
         label: '의외로 낮은 유사도',
-        description: '반대 감성 기반 추천',
+        description: 'reverse',
         score: widget.response.reverse.length.toDouble(),
         anchor: const Offset(0.18, 0.20),
         color: const Color(0xFFD38FB4),
@@ -80,7 +80,7 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
       ),
       _NodeData(
         label: '개인 맞춤형 추천',
-        description: '비슷한 청취 패턴 추천',
+        description: 'similar',
         score: widget.response.similar.length.toDouble(),
         anchor: const Offset(0.84, 0.34),
         color: const Color(0xFF7CBFB3),
@@ -88,7 +88,7 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
       ),
       _NodeData(
         label: '기타 탐색',
-        description: '감성 반대편 탐색',
+        description: 'opposite',
         score: widget.response.opposite.length.toDouble(),
         anchor: const Offset(0.72, 0.78),
         color: const Color(0xFF8A95A6),
@@ -96,7 +96,7 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
       ),
       _NodeData(
         label: '소수 취향 확장',
-        description: '전체 풀 확장 탐색',
+        description: 'allTracks',
         score: allTracks.length.toDouble(),
         anchor: const Offset(0.28, 0.78),
         color: const Color(0xFF83A8D6),

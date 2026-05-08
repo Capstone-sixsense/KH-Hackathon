@@ -267,10 +267,8 @@ class VinylLoadingDialog extends StatefulWidget {
 
 class _VinylLoadingDialogState extends State<VinylLoadingDialog> with TickerProviderStateMixin {
   late final AnimationController _discController;
-  late final AnimationController _headController;
   Timer? _lineTimer;
   int _lineIndex = 0;
-  bool _isDone = false;
 
   static const _lines = [
     '스포티파이 탐색 중...',
@@ -284,29 +282,14 @@ class _VinylLoadingDialogState extends State<VinylLoadingDialog> with TickerProv
     super.initState();
     _discController = AnimationController(vsync: this, duration: const Duration(milliseconds: 1700))
       ..repeat();
-    _headController = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
 
     _lineTimer = Timer.periodic(const Duration(seconds: 2), (_) {
-      if (!mounted || _isDone) {
+      if (!mounted) {
         return;
       }
       setState(() {
         _lineIndex = (_lineIndex + 1) % _lines.length;
       });
-    });
-
-    Future<void>.delayed(const Duration(seconds: 5), () async {
-      if (!mounted) {
-        return;
-      }
-      _isDone = true;
-      await _headController.forward();
-      await Future<void>.delayed(const Duration(milliseconds: 250));
-      _discController.stop();
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
     });
   }
 
@@ -314,7 +297,6 @@ class _VinylLoadingDialogState extends State<VinylLoadingDialog> with TickerProv
   void dispose() {
     _lineTimer?.cancel();
     _discController.dispose();
-    _headController.dispose();
     super.dispose();
   }
 
@@ -395,62 +377,55 @@ class _VinylLoadingDialogState extends State<VinylLoadingDialog> with TickerProv
                       ],
                     ),
                   ),
-                  AnimatedBuilder(
-                    animation: _headController,
-                    builder: (_, __) {
-                      // 0.0: 레코드 위 안착 상태 -> 1.0: 바깥으로 들려 이동한 상태
-                      final armAngle = lerpDouble(2.55, 3.35, _headController.value)!;
-                      return Positioned(
-                        right: 22,
-                        top: 16,
-                        child: Transform.rotate(
-                          angle: armAngle,
+                  Positioned(
+                    right: 22,
+                    top: 16,
+                    child: Transform.rotate(
+                      angle: 2.55,
+                      alignment: Alignment.centerLeft,
+                      child: SizedBox(
+                        width: 62,
+                        height: 18,
+                        child: Stack(
+                          clipBehavior: Clip.none,
                           alignment: Alignment.centerLeft,
-                          child: SizedBox(
-                            width: 62,
-                            height: 18,
-                            child: Stack(
-                              clipBehavior: Clip.none,
-                              alignment: Alignment.centerLeft,
-                              children: [
-                                Container(
-                                  width: 52,
-                                  height: 4,
-                                  margin: const EdgeInsets.only(left: 2),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF9CA3AF),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                ),
-                                Positioned(
-                                  right: 2,
-                                  child: Container(
-                                    width: 10,
-                                    height: 10,
-                                    decoration: const BoxDecoration(
-                                      color: Color(0xFFF472B6),
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                ),
-                                Positioned(
-                                  right: -2,
-                                  top: 7,
-                                  child: Container(
-                                    width: 8,
-                                    height: 4,
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFE5E7EB),
-                                      borderRadius: BorderRadius.circular(2),
-                                    ),
-                                  ),
-                                ),
-                              ],
+                          children: [
+                            Container(
+                              width: 52,
+                              height: 4,
+                              margin: const EdgeInsets.only(left: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF9CA3AF),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
                             ),
-                          ),
+                            Positioned(
+                              right: 2,
+                              child: Container(
+                                width: 10,
+                                height: 10,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFF472B6),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              right: -2,
+                              top: 7,
+                              child: Container(
+                                width: 8,
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFE5E7EB),
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      );
-                    },
+                      ),
+                    ),
                   ),
                   Positioned(
                     right: 50,
