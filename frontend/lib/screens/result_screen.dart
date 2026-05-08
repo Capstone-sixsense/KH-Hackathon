@@ -1,10 +1,16 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:khuthon/models/recommendation_models.dart';
 
 enum _TrackViewMode { gallery, list }
 
 class ResultScreen extends StatefulWidget {
-  const ResultScreen({super.key, required this.keyword, required this.response});
+  const ResultScreen({
+    super.key,
+    required this.keyword,
+    required this.response,
+  });
 
   final String keyword;
   final RecommendResponse response;
@@ -13,7 +19,8 @@ class ResultScreen extends StatefulWidget {
   State<ResultScreen> createState() => _ResultScreenState();
 }
 
-class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderStateMixin {
+class _ResultScreenState extends State<ResultScreen>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _introController;
   late final Animation<double> _mainCardOpacity;
   late final Animation<double> _mainCardScale;
@@ -24,27 +31,24 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
     super.initState();
     _introController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 3360),
+      duration: const Duration(milliseconds: 2100),
     );
     _mainCardOpacity = CurvedAnimation(
       parent: _introController,
-      curve: const Interval(0.0, 0.18, curve: Curves.easeOutCubic),
+      curve: const Interval(0.0, 0.14, curve: Curves.easeOutCubic),
     );
-    _mainCardScale = Tween<double>(
-      begin: 0.94,
-      end: 1.0,
-    ).animate(
+    _mainCardScale = Tween<double>(begin: 0.94, end: 1.0).animate(
       CurvedAnimation(
         parent: _introController,
-        curve: const Interval(0.0, 0.2, curve: Curves.easeOutCubic),
+        curve: const Interval(0.0, 0.16, curve: Curves.easeOutCubic),
       ),
     );
     _edgeProgress = CurvedAnimation(
       parent: _introController,
-      curve: const Interval(0.24, 0.86, curve: Curves.easeInOutCubic),
+      curve: const Interval(0.08, 0.34, curve: Curves.easeInOutCubic),
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future<void>.delayed(const Duration(milliseconds: 520), () {
+      Future<void>.delayed(const Duration(milliseconds: 180), () {
         if (!mounted) {
           return;
         }
@@ -72,143 +76,171 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
       _NodeData(
         label: '선택받지 못한 노래들',
         description: 'reverse',
-        score: widget.response.reverse.length.toDouble(),
-        anchor: const Offset(0.18, 0.20),
+        angle: -2.35,
+        ring: 0.78,
+        sizeScale: 1.26,
         color: const Color(0xFFD38FB4),
         tracks: widget.response.reverse,
       ),
       _NodeData(
         label: '비슷한 취향의 노래들',
         description: 'similar',
-        score: widget.response.similar.length.toDouble(),
-        anchor: const Offset(0.84, 0.34),
+        angle: -0.58,
+        ring: 0.64,
+        sizeScale: 0.94,
         color: const Color(0xFF7CBFB3),
         tracks: widget.response.similar,
       ),
       _NodeData(
         label: '반대 취향의 노래들',
         description: 'opposite',
-        score: widget.response.opposite.length.toDouble(),
-        anchor: const Offset(0.72, 0.78),
+        angle: 0.62,
+        ring: 0.82,
+        sizeScale: 0.94,
         color: const Color(0xFF8A95A6),
         tracks: widget.response.opposite,
       ),
       _NodeData(
         label: '더 알아보고 싶은 곡들',
         description: 'hidden',
-        score: widget.response.hidden.length.toDouble(),
-        anchor: const Offset(0.28, 0.78),
-        color: const Color(0xFF83A8D6),
+        angle: 2.22,
+        ring: 0.72,
+        sizeScale: 1.13,
+        color: const Color(0xFFD4A157),
         tracks: widget.response.hidden,
       ),
     ];
 
     return Scaffold(
       body: SafeArea(
-        child: Stack(
-          children: [
-            Positioned(
-              right: -120,
-              top: -80,
-              child: _GlowOrb(size: 280, color: const Color(0xFF2DD4BF).withValues(alpha: 0.11)),
-            ),
-            Positioned(
-              left: -140,
-              bottom: -120,
-              child: _GlowOrb(size: 340, color: const Color(0xFF374151).withValues(alpha: 0.14)),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Stack(
+                alignment: Alignment.center,
                 children: [
-                  Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: IconButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          icon: const Icon(Icons.arrow_back_ios_new_rounded),
-                        ),
-                      ),
-                      _SearchTagBar(tags: _buildSearchTags(widget.keyword)),
-                    ],
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: IconButton(
+                      tooltip: '뒤로',
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                    ),
                   ),
-                  const SizedBox(height: 20),
-                  Expanded(
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final center = Offset(constraints.maxWidth * 0.5, constraints.maxHeight * 0.46);
+                  _SearchTagBar(tags: _buildSearchTags(widget.keyword)),
+                ],
+              ),
+              const SizedBox(height: 18),
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final shortest = math.min(
+                      constraints.maxWidth,
+                      constraints.maxHeight,
+                    );
+                    final availableRadius =
+                        math.min(constraints.maxWidth, constraints.maxHeight) *
+                        0.48;
+                    final recordRadius = math.min(
+                      (shortest * 0.47).clamp(190.0, 420.0).toDouble(),
+                      availableRadius,
+                    );
+                    final mainCardSize = (recordRadius * 0.726)
+                        .clamp(202.0, 315.0)
+                        .toDouble();
+                    final baseNodeSize = (recordRadius * 0.418)
+                        .clamp(134.0, 178.0)
+                        .toDouble();
+                    final center = Offset(
+                      constraints.maxWidth * 0.5,
+                      constraints.maxHeight * 0.51,
+                    );
+                    return AnimatedBuilder(
+                      animation: _introController,
+                      builder: (context, _) {
                         return Stack(
+                          clipBehavior: Clip.none,
                           children: [
-                            AnimatedBuilder(
-                              animation: _introController,
-                              builder: (context, _) {
-                                return Stack(
-                                  children: [
-                                    CustomPaint(
-                                      size: Size(constraints.maxWidth, constraints.maxHeight),
-                                      painter: _GraphEdgePainter(
-                                        center: center,
-                                        nodes: groups,
-                                        progress: _edgeProgress.value,
-                                      ),
-                                    ),
-                                    Align(
-                                      alignment: const Alignment(0, -0.1),
-                                      child: FadeTransition(
-                                        opacity: _mainCardOpacity,
-                                        child: ScaleTransition(
-                                          scale: _mainCardScale,
-                                          child: _MainTrackCard(mainTrack: mainTrack),
-                                        ),
-                                      ),
-                                    ),
-                                    ...groups.asMap().entries.map((entry) {
-                                      final node = entry.value;
-                                      final nodeProgress = _nodeProgress(entry.key);
-                                      final nodeTranslateY = (1 - nodeProgress) * 14;
-                                      return Positioned(
-                                        left: constraints.maxWidth * node.anchor.dx - 74,
-                                        top: constraints.maxHeight * node.anchor.dy - 62,
-                                        child: Opacity(
-                                          opacity: nodeProgress,
-                                          child: Transform.translate(
-                                            offset: Offset(0, nodeTranslateY),
-                                            child: _GroupNode(
-                                              node: node,
-                                              onTap: () => _openGroupTracks(context, node),
-                                            ),
-                                          ),
-                                        ),
-                                      );
-                                    }),
-                                  ],
-                                );
-                              },
+                            CustomPaint(
+                              size: Size(
+                                constraints.maxWidth,
+                                constraints.maxHeight,
+                              ),
+                              painter: _VinylMapPainter(
+                                center: center,
+                                radius: recordRadius,
+                                nodes: groups,
+                                progress: _edgeProgress.value,
+                                ripple: _introController.value,
+                              ),
                             ),
+                            Positioned(
+                              left: center.dx - (mainCardSize / 2),
+                              top: center.dy - (mainCardSize / 2),
+                              child: FadeTransition(
+                                opacity: _mainCardOpacity,
+                                child: ScaleTransition(
+                                  scale: _mainCardScale,
+                                  child: _MainTrackCard(
+                                    mainTrack: mainTrack,
+                                    size: mainCardSize,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            ...groups.asMap().entries.map((entry) {
+                              final node = entry.value;
+                              final nodeSize = (baseNodeSize * node.sizeScale)
+                                  .clamp(126.0, 224.0)
+                                  .toDouble();
+                              final nodeProgress = _nodeProgress(entry.key);
+                              final nodeTranslateY = (1 - nodeProgress) * 14;
+                              final nodeOffset = node.position(
+                                center,
+                                recordRadius,
+                              );
+                              return Positioned(
+                                left: nodeOffset.dx - (nodeSize / 2),
+                                top:
+                                    nodeOffset.dy -
+                                    (nodeSize / 2) +
+                                    nodeTranslateY,
+                                child: Opacity(
+                                  opacity: nodeProgress,
+                                  child: _GroupNode(
+                                    node: node,
+                                    size: nodeSize,
+                                    onTap: () =>
+                                        _openGroupTracks(context, node),
+                                  ),
+                                ),
+                              );
+                            }),
                           ],
                         );
                       },
-                    ),
-                  ),
-                ],
+                    );
+                  },
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
   double _nodeProgress(int index) {
-    const baseStart = 0.88;
-    const step = 0.03;
-    const span = 0.11;
+    const baseStart = 0.56;
+    const step = 0.045;
+    const span = 0.16;
     final start = baseStart + (index * step);
     final end = (start + span).clamp(0.0, 1.0);
-    final t = ((_introController.value - start) / (end - start)).clamp(0.0, 1.0);
+    final t = ((_introController.value - start) / (end - start))
+        .clamp(0.0, 1.0)
+        .toDouble();
     return Curves.easeOutCubic.transform(t);
   }
 
@@ -217,15 +249,26 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
     if (normalized.isEmpty) {
       return const [];
     }
-    final commaTokens = normalized.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    final commaTokens = normalized
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
     if (commaTokens.length > 1) {
       return commaTokens;
     }
-    final dashTokens = normalized.split('-').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    final dashTokens = normalized
+        .split('-')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
     if (dashTokens.length > 1) {
       return dashTokens;
     }
-    final spaceTokens = normalized.split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
+    final spaceTokens = normalized
+        .split(RegExp(r'\s+'))
+        .where((e) => e.isNotEmpty)
+        .toList();
     return spaceTokens;
   }
 
@@ -233,11 +276,13 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
     final baseName = widget.response.trackName.trim();
     final baseArtist = widget.response.artist.trim();
 
-    String? albumArtUrl;
+    String? albumArtUrl = widget.response.albumArtUrl;
     for (final track in allTracks) {
-      final sameTitle = track.name.trim().toLowerCase() == baseName.toLowerCase();
-      final sameArtist = track.artist.trim().toLowerCase() == baseArtist.toLowerCase();
-      if (sameTitle && sameArtist) {
+      final sameTitle =
+          track.name.trim().toLowerCase() == baseName.toLowerCase();
+      final sameArtist =
+          track.artist.trim().toLowerCase() == baseArtist.toLowerCase();
+      if ((albumArtUrl ?? '').isEmpty && sameTitle && sameArtist) {
         albumArtUrl = track.albumArtUrl;
         break;
       }
@@ -267,74 +312,110 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
 }
 
 class _MainTrackCard extends StatelessWidget {
-  const _MainTrackCard({required this.mainTrack});
+  const _MainTrackCard({required this.mainTrack, required this.size});
+
   final _MainTrackData mainTrack;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
+    final albumSize = (size * 0.31).clamp(58.0, 90.0).toDouble();
+    final titleFontSize = (size * 0.078).clamp(15.5, 22.0).toDouble();
+    final artistFontSize = (size * 0.055).clamp(11.5, 15.0).toDouble();
     return Container(
-      width: 245,
-      padding: const EdgeInsets.all(16),
+      width: size,
+      height: size,
+      padding: EdgeInsets.all(size * 0.09),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF1A1A25), Color(0xFF12121A)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+        shape: BoxShape.circle,
+        gradient: const RadialGradient(
+          colors: [Color(0xFFF3E8D5), Color(0xFFD6B986), Color(0xFF7A5E37)],
+          stops: [0.0, 0.64, 1.0],
         ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-        boxShadow: const [BoxShadow(color: Color(0x55000000), blurRadius: 24, offset: Offset(0, 10))],
+        border: Border.all(
+          color: const Color(0xFFF7E9C9).withValues(alpha: 0.75),
+          width: 2,
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x66000000),
+            blurRadius: 28,
+            offset: Offset(0, 12),
+          ),
+        ],
       ),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          const Text(
+            'Side-B Seed',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Color(0xFF3B2B19),
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
           if ((mainTrack.albumArtUrl ?? '').isNotEmpty)
             ClipRRect(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(10),
               child: Image.network(
                 mainTrack.albumArtUrl!,
-                width: 120,
-                height: 120,
+                width: albumSize,
+                height: albumSize,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _fallbackArt(),
+                errorBuilder: (context, error, stackTrace) =>
+                    _fallbackArt(albumSize),
               ),
             )
           else
-            _fallbackArt(),
-          const SizedBox(height: 12),
-          Text(mainTrack.title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 4),
+            _fallbackArt(albumSize),
+          SizedBox(height: size * 0.045),
+          Text(
+            mainTrack.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Color(0xFF1F160E),
+              height: 1.05,
+              fontWeight: FontWeight.w900,
+            ).copyWith(fontSize: titleFontSize),
+          ),
+          SizedBox(height: size * 0.022),
           Text(
             mainTrack.hasResult ? mainTrack.artist : '추천 결과를 찾지 못했어요',
-            style: const TextStyle(color: Color(0xFFA1A1AA), fontSize: 12),
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: () {},
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF0F766E),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              child: const Text('Spotify에서 듣기'),
-            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Color(0xFF5A4226),
+              fontWeight: FontWeight.w700,
+            ).copyWith(fontSize: artistFontSize),
           ),
         ],
       ),
     );
   }
 
-  Widget _fallbackArt() {
+  Widget _fallbackArt(double albumSize) {
     return Container(
-      width: 120,
-      height: 120,
+      width: albumSize,
+      height: albumSize,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        gradient: const LinearGradient(colors: [Color(0xFF111827), Color(0xFF4B5563)]),
+        borderRadius: BorderRadius.circular(10),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF111827), Color(0xFF4B5563)],
+        ),
       ),
       alignment: Alignment.center,
-      child: const Icon(Icons.music_note_rounded, size: 48, color: Colors.white),
+      child: Icon(
+        Icons.music_note_rounded,
+        size: albumSize * 0.48,
+        color: Colors.white,
+      ),
     );
   }
 }
@@ -382,7 +463,9 @@ class _SearchTagBar extends StatelessWidget {
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
           decoration: BoxDecoration(
-            color: pastelColors[index % pastelColors.length].withValues(alpha: 0.62),
+            color: pastelColors[index % pastelColors.length].withValues(
+              alpha: 0.62,
+            ),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Text(
@@ -400,9 +483,14 @@ class _SearchTagBar extends StatelessWidget {
 }
 
 class _GroupNode extends StatefulWidget {
-  const _GroupNode({required this.node, required this.onTap});
+  const _GroupNode({
+    required this.node,
+    required this.size,
+    required this.onTap,
+  });
 
   final _NodeData node;
+  final double size;
   final VoidCallback onTap;
 
   @override
@@ -415,6 +503,12 @@ class _GroupNodeState extends State<_GroupNode> {
   @override
   Widget build(BuildContext context) {
     final galleryTracks = widget.node.tracks.take(4).toList();
+    final thumbSize = (widget.size * 0.3).clamp(40.0, 52.0).toDouble();
+    final shellSize = widget.size * 0.69;
+    final badgePadding = EdgeInsets.symmetric(
+      horizontal: widget.size * 0.052,
+      vertical: widget.size * 0.025,
+    );
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -425,59 +519,129 @@ class _GroupNodeState extends State<_GroupNode> {
           scale: _hovered ? 1.06 : 1.0,
           duration: const Duration(milliseconds: 170),
           curve: Curves.easeOut,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 170),
-            width: 148,
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: const Color(0xFF15151D).withValues(alpha: 0.9),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: widget.node.color.withValues(alpha: _hovered ? 0.95 : 0.68)),
-              boxShadow: [
-                BoxShadow(
-                  color: widget.node.color.withValues(alpha: _hovered ? 0.28 : 0.16),
-                  blurRadius: _hovered ? 18 : 14,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+          child: SizedBox(
+            width: widget.size,
+            height: widget.size,
+            child: Stack(
+              alignment: Alignment.center,
               children: [
-                SizedBox(
-                  width: 128,
-                  height: 84,
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(child: _AlbumThumb(track: galleryTracks.isNotEmpty ? galleryTracks[0] : null, color: widget.node.color)),
-                          const SizedBox(width: 4),
-                          Expanded(child: _AlbumThumb(track: galleryTracks.length > 1 ? galleryTracks[1] : null, color: widget.node.color)),
-                        ],
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 170),
+                  width: shellSize,
+                  height: shellSize,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: const Color(0xFF15151D).withValues(alpha: 0.92),
+                    border: Border.all(
+                      color: widget.node.color.withValues(
+                        alpha: _hovered ? 0.95 : 0.7,
                       ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Expanded(child: _AlbumThumb(track: galleryTracks.length > 2 ? galleryTracks[2] : null, color: widget.node.color)),
-                          const SizedBox(width: 4),
-                          Expanded(child: _AlbumThumb(track: galleryTracks.length > 3 ? galleryTracks[3] : null, color: widget.node.color)),
-                        ],
+                      width: 1.4,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: widget.node.color.withValues(
+                          alpha: _hovered ? 0.32 : 0.18,
+                        ),
+                        blurRadius: _hovered ? 22 : 16,
+                        offset: const Offset(0, 8),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  widget.node.label,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                Positioned(
+                  left: widget.size * 0.16,
+                  top: widget.size * 0.14,
+                  child: _AlbumThumb(
+                    track: galleryTracks.isNotEmpty ? galleryTracks[0] : null,
+                    color: widget.node.color,
+                    size: thumbSize,
+                  ),
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  widget.node.description,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 10, color: Color(0xFFA1A1AA)),
+                Positioned(
+                  right: widget.size * 0.16,
+                  top: widget.size * 0.14,
+                  child: _AlbumThumb(
+                    track: galleryTracks.length > 1 ? galleryTracks[1] : null,
+                    color: widget.node.color,
+                    size: thumbSize,
+                  ),
+                ),
+                Positioned(
+                  left: widget.size * 0.28,
+                  top: widget.size * 0.36,
+                  child: _AlbumThumb(
+                    track: galleryTracks.length > 2 ? galleryTracks[2] : null,
+                    color: widget.node.color,
+                    size: thumbSize,
+                  ),
+                ),
+                Positioned(
+                  right: widget.size * 0.28,
+                  top: widget.size * 0.36,
+                  child: _AlbumThumb(
+                    track: galleryTracks.length > 3 ? galleryTracks[3] : null,
+                    color: widget.node.color,
+                    size: thumbSize,
+                  ),
+                ),
+                Positioned(
+                  right: widget.size * 0.12,
+                  top: widget.size * 0.43,
+                  child: Container(
+                    padding: badgePadding,
+                    decoration: BoxDecoration(
+                      color: widget.node.color,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: Colors.black.withValues(alpha: 0.25),
+                      ),
+                    ),
+                    child: Text(
+                      '${widget.node.tracks.length}',
+                      style: TextStyle(
+                        color: Color(0xFF101016),
+                        fontSize: (widget.size * 0.07)
+                            .clamp(11.0, 12.0)
+                            .toDouble(),
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: widget.size * 0.035,
+                  child: Column(
+                    children: [
+                      Text(
+                        widget.node.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: (widget.size * 0.085)
+                              .clamp(12.0, 14.0)
+                              .toDouble(),
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        widget.node.description,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: (widget.size * 0.07)
+                              .clamp(10.0, 11.5)
+                              .toDouble(),
+                          color: Color(0xFFA1A1AA),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -488,58 +652,91 @@ class _GroupNodeState extends State<_GroupNode> {
   }
 }
 
-class _GraphEdgePainter extends CustomPainter {
-  _GraphEdgePainter({required this.center, required this.nodes, required this.progress});
+class _VinylMapPainter extends CustomPainter {
+  _VinylMapPainter({
+    required this.center,
+    required this.radius,
+    required this.nodes,
+    required this.progress,
+    required this.ripple,
+  });
 
   final Offset center;
+  final double radius;
   final List<_NodeData> nodes;
   final double progress;
+  final double ripple;
 
   @override
   void paint(Canvas canvas, Size size) {
-    for (final node in nodes) {
-      final end = Offset(size.width * node.anchor.dx, size.height * node.anchor.dy);
-      final isLeft = end.dx < center.dx;
-      final control = Offset(
-        (center.dx + end.dx) / 2 + (isLeft ? -34 : 34),
-        (center.dy + end.dy) / 2 - 24,
-      );
-      final path = Path()
-        ..moveTo(center.dx, center.dy)
-        ..quadraticBezierTo(control.dx, control.dy, end.dx, end.dy);
-      final baseStrokeWidth = 1.0 + (node.score * 1.25);
+    final shadowPaint = Paint()..color = Colors.black.withValues(alpha: 0.34);
+    canvas.drawCircle(center.translate(0, 18), radius * 1.01, shadowPaint);
 
-      final metrics = path.computeMetrics().toList();
-      if (metrics.isEmpty) {
+    final recordPaint = Paint()
+      ..shader = const RadialGradient(
+        colors: [Color(0xFF30303A), Color(0xFF111118), Color(0xFF050507)],
+        stops: [0.0, 0.46, 1.0],
+      ).createShader(Rect.fromCircle(center: center, radius: radius));
+    canvas.drawCircle(center, radius, recordPaint);
+
+    final rimPaint = Paint()
+      ..color = const Color(0xFFE5E7EB).withValues(alpha: 0.12)
+      ..strokeWidth = 1.2
+      ..style = PaintingStyle.stroke;
+    canvas.drawCircle(center, radius, rimPaint);
+
+    for (var i = 0; i < 14; i++) {
+      final grooveRadius = radius * (0.18 + (i * 0.055));
+      final groovePaint = Paint()
+        ..color = Colors.white.withValues(alpha: i.isEven ? 0.055 : 0.028)
+        ..strokeWidth = i.isEven ? 1.1 : 0.7
+        ..style = PaintingStyle.stroke;
+      canvas.drawCircle(center, grooveRadius, groovePaint);
+    }
+
+    for (var i = 0; i < 3; i++) {
+      final t = (ripple - (i * 0.12)).clamp(0.0, 1.0).toDouble();
+      if (t <= 0) {
         continue;
       }
-      final metric = metrics.first;
-      final clampedProgress = progress.clamp(0.0, 1.0);
-      if (clampedProgress <= 0.001) {
-        continue;
-      }
-      final animatedPath = metric.extractPath(0, metric.length * clampedProgress);
-      final animatedPaint = Paint()
-        ..color = node.color.withValues(alpha: 0.2)
-        ..strokeWidth = baseStrokeWidth + 0.3
+      final ripplePaint = Paint()
+        ..color = const Color(0xFF7CBFB3).withValues(alpha: (1 - t) * 0.18)
+        ..strokeWidth = 1.6
+        ..style = PaintingStyle.stroke;
+      canvas.drawCircle(center, radius * (0.24 + (0.72 * t)), ripplePaint);
+    }
+
+    final clampedProgress = progress.clamp(0.0, 1.0).toDouble();
+    if (clampedProgress <= 0.001) {
+      return;
+    }
+
+    for (final node in nodes) {
+      final ringRadius = radius * node.ring;
+      final arcRect = Rect.fromCircle(center: center, radius: ringRadius);
+      final sweep = 0.62 * clampedProgress;
+      final arcPaint = Paint()
+        ..color = node.color.withValues(alpha: 0.42)
+        ..strokeWidth =
+            (1.6 + (node.tracks.length.clamp(0, 4).toDouble() * 0.35)) *
+            node.sizeScale
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round;
-      canvas.drawPath(animatedPath, animatedPaint);
+      canvas.drawArc(arcRect, node.angle - (sweep / 2), sweep, false, arcPaint);
 
-      if (clampedProgress >= 0.999) {
-        final basePaint = Paint()
-          ..color = node.color.withValues(alpha: 0.2)
-          ..strokeWidth = baseStrokeWidth
-          ..style = PaintingStyle.stroke
-          ..strokeCap = StrokeCap.round;
-        canvas.drawPath(path, basePaint);
-      }
+      final nodePosition = node.position(center, radius);
+      final dotPaint = Paint()..color = node.color.withValues(alpha: 0.88);
+      canvas.drawCircle(nodePosition, 4.2 * node.sizeScale, dotPaint);
     }
   }
 
   @override
-  bool shouldRepaint(covariant _GraphEdgePainter oldDelegate) {
-    return oldDelegate.center != center || oldDelegate.nodes != nodes || oldDelegate.progress != progress;
+  bool shouldRepaint(covariant _VinylMapPainter oldDelegate) {
+    return oldDelegate.center != center ||
+        oldDelegate.radius != radius ||
+        oldDelegate.nodes != nodes ||
+        oldDelegate.progress != progress ||
+        oldDelegate.ripple != ripple;
   }
 }
 
@@ -547,40 +744,54 @@ class _NodeData {
   const _NodeData({
     required this.label,
     required this.description,
-    required this.score,
-    required this.anchor,
+    required this.angle,
+    required this.ring,
+    required this.sizeScale,
     required this.color,
     required this.tracks,
   });
 
   final String label;
   final String description;
-  final double score;
-  final Offset anchor;
+  final double angle;
+  final double ring;
+  final double sizeScale;
   final Color color;
   final List<TrackRecommendation> tracks;
+
+  Offset position(Offset center, double radius) {
+    return Offset(
+      center.dx + (math.cos(angle) * radius * ring),
+      center.dy + (math.sin(angle) * radius * ring),
+    );
+  }
 }
 
 class _AlbumThumb extends StatelessWidget {
-  const _AlbumThumb({required this.track, required this.color});
+  const _AlbumThumb({
+    required this.track,
+    required this.color,
+    required this.size,
+  });
 
   final TrackRecommendation? track;
   final Color color;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
     final url = track?.albumArtUrl ?? '';
     return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(size / 2),
       child: Container(
-        width: double.infinity,
-        height: 40,
+        width: size,
+        height: size,
         color: const Color(0xFF1D1D27),
         child: url.isNotEmpty
             ? Image.network(
                 url,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _fallback(),
+                errorBuilder: (context, error, stackTrace) => _fallback(),
               )
             : _fallback(),
       ),
@@ -598,30 +809,6 @@ class _AlbumThumb extends StatelessWidget {
       ),
       child: const Center(
         child: Icon(Icons.music_note_rounded, size: 14, color: Colors.white70),
-      ),
-    );
-  }
-}
-
-class _GlowOrb extends StatelessWidget {
-  const _GlowOrb({required this.size, required this.color});
-
-  final double size;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: RadialGradient(
-            colors: [color, color.withValues(alpha: 0)],
-            stops: const [0.15, 1],
-          ),
-        ),
       ),
     );
   }
@@ -696,67 +883,81 @@ class _GroupTracksScreenState extends State<_GroupTracksScreen> {
                 ],
               ),
             ),
-          Center(
-            child: Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1A1A25),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _ViewModeToggleChip(
-                    icon: Icons.grid_view_rounded,
-                    tooltip: '갤러리',
-                    selected: _mode == _TrackViewMode.gallery,
-                    color: widget.color,
-                    onTap: () => setState(() => _mode = _TrackViewMode.gallery),
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A1A25),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.12),
                   ),
-                  const SizedBox(width: 6),
-                  _ViewModeToggleChip(
-                    icon: Icons.format_list_bulleted_rounded,
-                    tooltip: '리스트',
-                    selected: _mode == _TrackViewMode.list,
-                    color: widget.color,
-                    onTap: () => setState(() => _mode = _TrackViewMode.list),
-                  ),
-                ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _ViewModeToggleChip(
+                      icon: Icons.grid_view_rounded,
+                      tooltip: '갤러리',
+                      selected: _mode == _TrackViewMode.gallery,
+                      color: widget.color,
+                      onTap: () =>
+                          setState(() => _mode = _TrackViewMode.gallery),
+                    ),
+                    const SizedBox(width: 6),
+                    _ViewModeToggleChip(
+                      icon: Icons.format_list_bulleted_rounded,
+                      tooltip: '리스트',
+                      selected: _mode == _TrackViewMode.list,
+                      color: widget.color,
+                      onTap: () => setState(() => _mode = _TrackViewMode.list),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          Expanded(
-            child: widget.tracks.isEmpty
-                ? const Center(
-                    child: Text('표시할 추천 곡이 없습니다.', style: TextStyle(color: Color(0xFFA1A1AA))),
-                  )
-                : _mode == _TrackViewMode.gallery
-                    ? GridView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 6,
-                          mainAxisSpacing: 10,
-                          crossAxisSpacing: 10,
-                          childAspectRatio: 0.85,
-                        ),
-                        itemCount: widget.tracks.length,
-                        itemBuilder: (context, index) {
-                          final track = widget.tracks[index];
-                          return _TrackGalleryCard(track: track, color: widget.color);
-                        },
-                      )
-                    : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                        itemCount: widget.tracks.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 8),
-                        itemBuilder: (context, index) {
-                          final track = widget.tracks[index];
-                          return _TrackListTile(track: track, color: widget.color);
-                        },
+            Expanded(
+              child: widget.tracks.isEmpty
+                  ? const Center(
+                      child: Text(
+                        '표시할 추천 곡이 없습니다.',
+                        style: TextStyle(color: Color(0xFFA1A1AA)),
                       ),
-          ),
+                    )
+                  : _mode == _TrackViewMode.gallery
+                  ? GridView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 6,
+                            mainAxisSpacing: 10,
+                            crossAxisSpacing: 10,
+                            childAspectRatio: 0.85,
+                          ),
+                      itemCount: widget.tracks.length,
+                      itemBuilder: (context, index) {
+                        final track = widget.tracks[index];
+                        return _TrackGalleryCard(
+                          track: track,
+                          color: widget.color,
+                        );
+                      },
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      itemCount: widget.tracks.length,
+                      separatorBuilder: (context, index) =>
+                          const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final track = widget.tracks[index];
+                        return _TrackListTile(
+                          track: track,
+                          color: widget.color,
+                        );
+                      },
+                    ),
+            ),
           ],
         ),
       ),
@@ -790,9 +991,19 @@ class _TrackGalleryCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          Text(track.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+          Text(
+            track.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+          ),
           const SizedBox(height: 2),
-          Text(track.artist, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, color: Color(0xFFA1A1AA))),
+          Text(
+            track.artist,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 10, color: Color(0xFFA1A1AA)),
+          ),
         ],
       ),
     );
@@ -825,9 +1036,13 @@ class _ViewModeToggleChip extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
-            color: selected ? color.withValues(alpha: 0.22) : Colors.transparent,
+            color: selected
+                ? color.withValues(alpha: 0.22)
+                : Colors.transparent,
             border: Border.all(
-              color: selected ? color.withValues(alpha: 0.72) : Colors.white.withValues(alpha: 0.1),
+              color: selected
+                  ? color.withValues(alpha: 0.72)
+                  : Colors.white.withValues(alpha: 0.1),
             ),
           ),
           child: Icon(
@@ -864,7 +1079,11 @@ class _TrackListTile extends StatelessWidget {
           ),
         ),
         title: Text(track.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: Text(track.artist, maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: Text(
+          track.artist,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
     );
   }
@@ -883,7 +1102,7 @@ class _TrackArt extends StatelessWidget {
       return Image.network(
         imageUrl,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => _fallback(),
+        errorBuilder: (context, error, stackTrace) => _fallback(),
       );
     }
     return _fallback();
@@ -893,7 +1112,10 @@ class _TrackArt extends StatelessWidget {
     return Container(
       color: const Color(0xFF1D1D27),
       alignment: Alignment.center,
-      child: Icon(Icons.music_note_rounded, color: color.withValues(alpha: 0.86)),
+      child: Icon(
+        Icons.music_note_rounded,
+        color: color.withValues(alpha: 0.86),
+      ),
     );
   }
 }

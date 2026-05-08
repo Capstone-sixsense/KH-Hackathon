@@ -1,17 +1,11 @@
 class RecommendRequest {
-  const RecommendRequest({
-    required this.query,
-    this.topN = 10,
-  });
+  const RecommendRequest({required this.query, this.topN = 10});
 
   final String query;
   final int topN;
 
   Map<String, dynamic> toJson() {
-    return {
-      'query': query,
-      'top_n': topN,
-    };
+    return {'query': query, 'top_n': topN};
   }
 }
 
@@ -54,7 +48,9 @@ class TrackRecommendation {
       reverseScore: json['reverse_score'] as num?,
       algo: json['algo'] as String? ?? '',
       label: json['label'] as String? ?? '',
-      reasonTags: (json['reason_tags'] as List<dynamic>? ?? const []).map((e) => e.toString()).toList(),
+      reasonTags: (json['reason_tags'] as List<dynamic>? ?? const [])
+          .map((e) => e.toString())
+          .toList(),
     );
   }
 }
@@ -68,6 +64,8 @@ class RecommendResponse {
     required this.reverse,
     required this.opposite,
     required this.hidden,
+    this.spotifyId,
+    this.albumArtUrl,
   });
 
   final String trackName;
@@ -77,6 +75,8 @@ class RecommendResponse {
   final List<TrackRecommendation> reverse;
   final List<TrackRecommendation> opposite;
   final List<TrackRecommendation> hidden;
+  final String? spotifyId;
+  final String? albumArtUrl;
 
   factory RecommendResponse.fromJson(Map<String, dynamic> json) {
     final result = (json['result'] as Map<String, dynamic>? ?? const {});
@@ -96,6 +96,8 @@ class RecommendResponse {
       hidden: (result['hidden'] as List<dynamic>? ?? const [])
           .map((e) => TrackRecommendation.fromJson(e as Map<String, dynamic>))
           .toList(),
+      spotifyId: json['spotify_id'] as String?,
+      albumArtUrl: json['album_art_url'] as String?,
     );
   }
 }
