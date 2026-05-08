@@ -87,10 +87,6 @@ class _SearchScreenState extends State<SearchScreen> {
         }
         Navigator.of(context, rootNavigator: true).pop();
         await Future<void>.delayed(_dialogCloseDelay);
-        if (!mounted) {
-          return;
-        }
-        await _showSearchNotFoundDialog();
         return;
       }
       await _closeLoadingDialogWithDelay();
@@ -136,10 +132,6 @@ class _SearchScreenState extends State<SearchScreen> {
       }
       Navigator.of(context, rootNavigator: true).pop();
       await Future<void>.delayed(_dialogCloseDelay);
-      if (!mounted) {
-        return;
-      }
-      await _showSearchNotFoundDialog();
     } finally {
       if (mounted) {
         setState(() => _isSearching = false);
@@ -196,24 +188,6 @@ class _SearchScreenState extends State<SearchScreen> {
         _searchHistory.removeRange(_maxHistoryCount, _searchHistory.length);
       }
     });
-  }
-
-  Future<void> _showSearchNotFoundDialog() async {
-    return showDialog<void>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('검색 실패'),
-          content: const Text('음악을 찾을 수 없어요. 다시 입력해주세요.'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('OK'),
-            ),
-          ],
-        );
-      },
-    );
   }
 
   @override
@@ -873,39 +847,36 @@ class _VinylLoadingDialogState extends State<VinylLoadingDialog>
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      _failure ? '탐색 실패' : '분석 중',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 260),
-                      child: Text(
-                        _failure
-                            ? '조건에 맞는 곡을 찾지 못했어요.'
-                            : _lines[_lineIndex],
-                        key: ValueKey('${_failure}_$_lineIndex'),
-                        style: const TextStyle(
-                          color: Color(0xFFA1A1AA),
-                          height: 1.4,
-                          fontSize: 13,
+                    if (!_failure) ...[
+                      const Text(
+                        '분석 중',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    if (_failure)
-                      const LinearProgressIndicator(
-                        value: 0,
-                        color: Color(0xFFDC2626),
-                        backgroundColor: Color(0xFF27272A),
-                      )
-                    else
+                      const SizedBox(height: 12),
+                      AnimatedSwitcher(
+                        duration: Duration(milliseconds: 260),
+                        child: Text(
+                          _lines[_lineIndex],
+                          key: ValueKey<int>(_lineIndex),
+                          style: const TextStyle(
+                            color: Color(0xFFA1A1AA),
+                            height: 1.4,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
                       const LinearProgressIndicator(
                         color: Color(0xFF2DD4BF),
                         backgroundColor: Color(0xFF27272A),
+                      ),
+                    ] else
+                      const SizedBox(
+                        width: 240,
+                        height: 56,
                       ),
                   ],
                 ),
