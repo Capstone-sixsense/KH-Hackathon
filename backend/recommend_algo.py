@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 # 동시에 진행할 Spotify 개별 트랙 검색 수를 제한해 429 rate limit 방지
 _SP_SEMAPHORE = asyncio.Semaphore(15)
+_SP_RATE_LIMIT_UNTIL = 0.0
 
 GENERIC_SCORING_TAGS = {"k-pop", "korean", "pop", "seen live", "japanese", "j-pop"}
 TAG_BLACKLIST_PATTERNS = [
@@ -99,26 +100,41 @@ def _is_blacklisted_tag(tag: str, artist: str) -> bool:
         return True
     return any(re.search(pattern, normalized) for pattern in TAG_BLACKLIST_PATTERNS)
 
+
+def _mark_spotify_search_rate_limited(exc: spotipy.SpotifyException) -> None:
+    global _SP_RATE_LIMIT_UNTIL
+    retry_after = int(getattr(exc, "headers", {}).get("Retry-After", 60))
+    _SP_RATE_LIMIT_UNTIL = max(_SP_RATE_LIMIT_UNTIL, time.monotonic() + retry_after)
+    logger.warning(
+        "Spotify Search rate limit 감지 — %d초 동안 Spotify Search 보강 생략",
+        retry_after,
+    )
+
+
+def _is_spotify_search_rate_limited() -> bool:
+    return time.monotonic() < _SP_RATE_LIMIT_UNTIL
+
+
 def _sp_search(sp: spotipy.Spotify, track_name: str, artist: str) -> dict | None:
-    """Spotify에서 트랙을 검색해 첫 번째 결과를 반환. 429 시 최대 3회 재시도."""
+    """Spotify에서 트랙을 검색해 첫 번째 결과를 반환."""
+    if _is_spotify_search_rate_limited():
+        return None
+
     query = f"track:{track_name} artist:{artist}"
-    for attempt in range(3):
-        try:
-            results = sp.search(q=query, type="track", limit=1)
-            items = results["tracks"]["items"]
-            return items[0] if items else None
-        except spotipy.SpotifyException as e:
-            if e.http_status == 429:
-                retry_after = int(getattr(e, "headers", {}).get("Retry-After", 2 * (attempt + 1)))
-                logger.warning("Spotify 429 rate limit — %d초 후 재시도 (%d/3)", retry_after, attempt + 1)
-                time.sleep(retry_after)
-            else:
-                logger.warning("Spotify 검색 실패 (%s - %s): %s", track_name, artist, e)
-                return None
-        except Exception as e:
+    try:
+        results = sp.search(q=query, type="track", limit=1)
+        items = results["tracks"]["items"]
+        return items[0] if items else None
+    except spotipy.SpotifyException as e:
+        if e.http_status == 429:
+            _mark_spotify_search_rate_limited(e)
+            logger.warning("Spotify 429 rate limit — 후보 보강 생략 (%s - %s)", track_name, artist)
+        else:
             logger.warning("Spotify 검색 실패 (%s - %s): %s", track_name, artist, e)
-            return None
-    return None
+        return None
+    except Exception as e:
+        logger.warning("Spotify 검색 실패 (%s - %s): %s", track_name, artist, e)
+        return None
 
 async def normalize_input(
     query: str,
@@ -128,58 +144,104 @@ async def normalize_input(
 ) -> tuple[str, str, str] | tuple[None, None, None]:
     """Last.fm 검증 후보를 우선하되, 없으면 Spotify 첫 후보를 반환한다."""
     spotify_fallback: tuple[str, str, str] | None = None
-    try:
-        results = await asyncio.to_thread(
-            sp.search, q=query, type="track", limit=search_limit
-        )
-        items = results["tracks"]["items"]
+    if not _is_spotify_search_rate_limited():
+        try:
+            results = await asyncio.to_thread(
+                sp.search, q=query, type="track", limit=search_limit
+            )
+            items = results["tracks"]["items"]
 
-        for track in items:
-            name = str(track.get("name") or "")
-            artists = track.get("artists") or []
-            artist = str(artists[0].get("name") or "") if artists else ""
-            track_id = str(track.get("id") or "")
+            for track in items:
+                name = str(track.get("name") or "")
+                artists = track.get("artists") or []
+                artist = str(artists[0].get("name") or "") if artists else ""
+                track_id = str(track.get("id") or "")
 
-            if not name or not artist or not track_id:
-                continue
+                if not name or not artist or not track_id:
+                    continue
 
-            if spotify_fallback is None:
-                spotify_fallback = (name, artist, track_id)
+                if spotify_fallback is None:
+                    spotify_fallback = (name, artist, track_id)
 
-            # Last.fm에 getSimilar 데이터가 있는지 검증
-            try:
-                lf_track = lastfm.get_track(artist, name)
-                similar  = await asyncio.to_thread(lf_track.get_similar, limit=1)
+                # Last.fm에 getSimilar 데이터가 있는지 검증
+                try:
+                    lf_track = lastfm.get_track(artist, name)
+                    similar  = await asyncio.to_thread(lf_track.get_similar, limit=1)
 
-                if similar:   # 유사 트랙이 1개라도 있으면 사용 가능
+                    if similar:   # 유사 트랙이 1개라도 있으면 사용 가능
+                        logger.info(
+                            "[Normalize] 최종 선택: '%s - %s' (Last.fm 검증 완료)",
+                            name, artist,
+                        )
+                        return name, artist, track_id
+
                     logger.info(
-                        "[Normalize] 최종 선택: '%s - %s' (Last.fm 검증 완료)",
+                        "[Normalize] Last.fm 유사 트랙 없음, Spotify 후보 보류: '%s - %s'",
                         name, artist,
                     )
-                    return name, artist, track_id
+                except Exception:
+                    logger.info(
+                        "[Normalize] Last.fm 조회 실패, Spotify 후보 보류: '%s - %s'",
+                        name, artist,
+                    )
+                    continue
 
+            if spotify_fallback:
                 logger.info(
-                    "[Normalize] Last.fm 유사 트랙 없음, Spotify 후보 보류: '%s - %s'",
-                    name, artist,
+                    "[Normalize] Last.fm 검증 후보 없음. Spotify 첫 후보로 fallback: '%s - %s'",
+                    spotify_fallback[0], spotify_fallback[1],
                 )
-            except Exception:
-                logger.info(
-                    "[Normalize] Last.fm 조회 실패, Spotify 후보 보류: '%s - %s'",
-                    name, artist,
-                )
+                return spotify_fallback
+
+        except spotipy.SpotifyException as e:
+            if e.http_status == 429:
+                _mark_spotify_search_rate_limited(e)
+            logger.error("[Normalize] Spotify 검색 실패: %s", e)
+        except Exception as e:
+            logger.error("[Normalize] Spotify 검색 실패: %s", e)
+
+    return await _normalize_input_with_lastfm(query, lastfm)
+
+
+async def _normalize_input_with_lastfm(
+    query: str,
+    lastfm: pylast.LastFMNetwork,
+) -> tuple[str, str, str | None] | tuple[None, None, None]:
+    """Spotify Search 장애 시 Last.fm track.search로 기준 트랙을 찾는다."""
+    try:
+        results = await asyncio.to_thread(
+            lambda: lastfm.search_for_track("", query).get_next_page()
+        )
+        for track in results:
+            artist = str(getattr(track, "artist", "") or "").strip()
+            name = str(getattr(track, "title", "") or track.get_name() or "").strip()
+            if not artist or not name or _is_unknown_lastfm_artist(artist):
                 continue
-
-        if spotify_fallback:
+            name = _clean_lastfm_title(name, artist)
             logger.info(
-                "[Normalize] Last.fm 검증 후보 없음. Spotify 첫 후보로 fallback: '%s - %s'",
-                spotify_fallback[0], spotify_fallback[1],
+                "[Normalize] Spotify 장애 fallback: Last.fm 후보 사용 '%s - %s'",
+                name,
+                artist,
             )
-            return spotify_fallback
-
+            return name, artist, None
     except Exception as e:
-        logger.error("[Normalize] Spotify 검색 실패: %s", e)
+        logger.warning("[Normalize] Last.fm fallback 실패: %s", e)
 
     return None, None, None
+
+
+def _is_unknown_lastfm_artist(artist: str) -> bool:
+    normalized = artist.strip().lower()
+    return normalized in {"[unknown]", "<unknown>", "unknown", "n/a"}
+
+
+def _clean_lastfm_title(title: str, artist: str) -> str:
+    cleaned = title.strip()
+    for separator in (" - ", " – ", " — "):
+        prefix = f"{artist}{separator}"
+        if cleaned.lower().startswith(prefix.lower()):
+            return cleaned[len(prefix):].strip() or cleaned
+    return cleaned
 
 async def _enrich_with_spotify(
     sp: spotipy.Spotify,
@@ -199,13 +261,17 @@ async def _enrich_with_spotify(
         async with _SP_SEMAPHORE:
             item = await asyncio.to_thread(_sp_search, sp, track.name, track.artist)
         if item:
-            track.spotify_id    = item["id"]
-            track.popularity    = item["popularity"]
-            track.album_art_url = (
-                item["album"]["images"][0]["url"]
-                if item["album"]["images"] else None
-            )
-            artist_id_by_idx[idx] = item["artists"][0]["id"]
+            track.spotify_id = item.get("id") or f"unknown_{track.name}"
+            track.popularity = item.get("popularity")
+
+            album = item.get("album") or {}
+            images = album.get("images") or []
+            track.album_art_url = images[0].get("url") if images else None
+
+            artists = item.get("artists") or []
+            artist_id = artists[0].get("id") if artists else None
+            if artist_id:
+                artist_id_by_idx[idx] = artist_id
         else:
             track.spotify_id = f"unknown_{track.name}"
             track.popularity = None
@@ -298,6 +364,9 @@ def _cap_per_artist(tracks: list[TrackInfo], max_per: int = 1) -> list[TrackInfo
 
 async def _get_input_artist_popularity(sp: spotipy.Spotify, artist: str) -> int:
     """입력 아티스트의 Spotify popularity를 조회. 실패 시 기본값 55 반환."""
+    if _is_spotify_search_rate_limited():
+        return 55
+
     try:
         result = await asyncio.to_thread(
             sp.search, f"artist:{artist}", type="artist", limit=1
