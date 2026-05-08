@@ -82,15 +82,16 @@ async def _enrich_with_spotify(
     async def _fetch(track: TrackInfo) -> TrackInfo:
         item = await asyncio.to_thread(_sp_search, sp, track.name, track.artist)
         if item:
-            track.spotify_id    = item["id"]
-            track.popularity    = item["popularity"]
-            track.album_art_url = (
-                item["album"]["images"][0]["url"]
-                if item["album"]["images"] else None
-            )
+            track.spotify_id = item["id"]
+            track.popularity = item["popularity"]
+            track.album_art_url = item["album"]["images"][0]["url"] if item["album"]["images"] else None
+        else:
+            # 검색 실패 시 기본값 설정 (에러 방지)
+            track.spotify_id = track.spotify_id or f"temp_{track.name}"
+            track.popularity = track.popularity or 0 
         return track
 
-    return await asyncio.gather(*[_fetch(t) for t in tracks])
+    return list(await asyncio.gather(*[_fetch(t) for t in tracks]))
 
 
 def _deduplicate(tracks: list[TrackInfo]) -> list[TrackInfo]:
@@ -245,10 +246,17 @@ async def reverse_top100(
 
     # ── Step 4. 필터 ─────────────────────────────────────────────
     before = len(pool)
+    """
     pool = [
         t for t in pool
         if t.popularity is not None
         and pop_min <= t.popularity <= pop_max
+        and (t.match_score or 0) >= match_threshold
+    ]
+    """
+    pool = [
+        t for t in pool
+        if (t.popularity is None or pop_min <= t.popularity <= pop_max)
         and (t.match_score or 0) >= match_threshold
     ]
     logger.info("[Reverse] 필터 후: %d개 (제거 %d개)", len(pool), before - len(pool))

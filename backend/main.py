@@ -21,6 +21,7 @@ from spotipy.oauth2 import SpotifyClientCredentials
 
 import requests
 from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from recommend_algo import (
     opposite_emotion,
@@ -51,11 +52,23 @@ app.add_middleware(
 
 # ── 외부 API 클라이언트 초기화 ────────────────────────────────
 def _init_spotify() -> spotipy.Spotify:
+    # 1. HTTP 세션 설정 (연결 풀 확장 및 재시도 로직)
+    session = requests.Session()
+    adapter = HTTPAdapter(
+        pool_connections=50,  # 연결 풀 개수 확장
+        pool_maxsize=50, 
+        max_retries=Retry(total=3, backoff_factor=1)
+    )
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+
+    # 2. 커스텀 세션을 가진 Spotify 객체 반환
     return spotipy.Spotify(
         auth_manager=SpotifyClientCredentials(
             client_id=os.environ["SPOTIFY_CLIENT_ID"],
             client_secret=os.environ["SPOTIFY_CLIENT_SECRET"],
-        )
+        ),
+        requests_session=session  # 확장된 세션 주입
     )
 
 def _init_lastfm() -> pylast.LastFMNetwork:
