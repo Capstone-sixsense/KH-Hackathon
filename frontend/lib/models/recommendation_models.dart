@@ -67,6 +67,7 @@ class RecommendResponse {
     required this.similar,
     required this.reverse,
     required this.opposite,
+    required this.hidden,
   });
 
   final String trackName;
@@ -75,6 +76,7 @@ class RecommendResponse {
   final List<TrackRecommendation> similar;
   final List<TrackRecommendation> reverse;
   final List<TrackRecommendation> opposite;
+  final List<TrackRecommendation> hidden;
 
   factory RecommendResponse.fromJson(Map<String, dynamic> json) {
     final result = (json['result'] as Map<String, dynamic>? ?? const {});
@@ -89,6 +91,9 @@ class RecommendResponse {
           .map((e) => TrackRecommendation.fromJson(e as Map<String, dynamic>))
           .toList(),
       opposite: (result['opposite'] as List<dynamic>? ?? const [])
+          .map((e) => TrackRecommendation.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      hidden: (result['hidden'] as List<dynamic>? ?? const [])
           .map((e) => TrackRecommendation.fromJson(e as Map<String, dynamic>))
           .toList(),
     );

@@ -65,6 +65,7 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
       ...widget.response.similar,
       ...widget.response.reverse,
       ...widget.response.opposite,
+      ...widget.response.hidden,
     ];
     final mainTrack = _buildMainTrack(allTracks);
     final groups = [
@@ -94,11 +95,11 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
       ),
       _NodeData(
         label: '소수 취향 확장',
-        description: 'allTracks',
-        score: allTracks.length.toDouble(),
+        description: 'hidden',
+        score: widget.response.hidden.length.toDouble(),
         anchor: const Offset(0.28, 0.78),
         color: const Color(0xFF83A8D6),
-        tracks: allTracks,
+        tracks: widget.response.hidden,
       ),
     ];
 
