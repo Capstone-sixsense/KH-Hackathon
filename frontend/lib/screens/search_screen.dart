@@ -85,7 +85,6 @@ class _SearchScreenState extends State<SearchScreen> {
         if (!mounted) {
           return;
         }
-        Navigator.of(context, rootNavigator: true).pop();
         await Future<void>.delayed(_dialogCloseDelay);
         return;
       }
@@ -130,7 +129,6 @@ class _SearchScreenState extends State<SearchScreen> {
       if (!mounted) {
         return;
       }
-      Navigator.of(context, rootNavigator: true).pop();
       await Future<void>.delayed(_dialogCloseDelay);
     } finally {
       if (mounted) {
@@ -143,9 +141,13 @@ class _SearchScreenState extends State<SearchScreen> {
     final vinyl = _vinylLoadingKey.currentState;
     if (vinyl != null) {
       await vinyl.playFailureSequence();
-    } else {
-      await Future<void>.delayed(const Duration(milliseconds: 600));
+      return;
     }
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context, rootNavigator: true).pop();
   }
 
   Future<void> _closeLoadingDialogWithDelay() async {
@@ -643,6 +645,7 @@ class _VinylLoadingDialogState extends State<VinylLoadingDialog>
   Timer? _lineTimer;
   int _lineIndex = 0;
   bool _failure = false;
+  Completer<void>? _failureDismissCompleter;
 
   static const _lines = [
     '음악 탐색 중...',
@@ -651,7 +654,7 @@ class _VinylLoadingDialogState extends State<VinylLoadingDialog>
     'Side-B 감성 매칭 중...',
   ];
 
-  /// 탐색 실패 시 디스크 정지 + X 표시 애니메이션 후 종료 대기.
+  /// 탐색 실패 시 디스크 정지 + X 표시 후 안내·OK로 닫을 때까지 대기.
   Future<void> playFailureSequence() async {
     if (!mounted || _failure) {
       return;
@@ -661,6 +664,25 @@ class _VinylLoadingDialogState extends State<VinylLoadingDialog>
     setState(() => _failure = true);
     await _failureController.forward(from: 0);
     await Future<void>.delayed(const Duration(milliseconds: 200));
+    if (!mounted) {
+      return;
+    }
+    final completer = Completer<void>();
+    _failureDismissCompleter = completer;
+    setState(() {});
+    await completer.future;
+  }
+
+  void _onFailureOk() {
+    if (!mounted) {
+      return;
+    }
+    final c = _failureDismissCompleter;
+    _failureDismissCompleter = null;
+    if (c != null && !c.isCompleted) {
+      c.complete();
+    }
+    Navigator.of(context).pop();
   }
 
   @override
@@ -692,6 +714,11 @@ class _VinylLoadingDialogState extends State<VinylLoadingDialog>
 
   @override
   void dispose() {
+    final c = _failureDismissCompleter;
+    _failureDismissCompleter = null;
+    if (c != null && !c.isCompleted) {
+      c.complete();
+    }
     _lineTimer?.cancel();
     _discController.dispose();
     _failureController.dispose();
@@ -704,7 +731,7 @@ class _VinylLoadingDialogState extends State<VinylLoadingDialog>
       backgroundColor: const Color(0xFF111119),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: AbsorbPointer(
-        absorbing: _failure,
+        absorbing: !_failure,
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Row(
@@ -873,11 +900,37 @@ class _VinylLoadingDialogState extends State<VinylLoadingDialog>
                         color: Color(0xFF2DD4BF),
                         backgroundColor: Color(0xFF27272A),
                       ),
-                    ] else
-                      const SizedBox(
-                        width: 240,
-                        height: 56,
+                    ] else ...[
+                      const Text(
+                        '탐색 실패',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        '조건에 맞는 곡을 찾지 못했어요.\n다시 입력해 주세요.',
+                        style: TextStyle(
+                          color: Color(0xFFA1A1AA),
+                          height: 1.45,
+                          fontSize: 13,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      const LinearProgressIndicator(
+                        value: 0,
+                        color: Color(0xFFDC2626),
+                        backgroundColor: Color(0xFF27272A),
+                      ),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: _onFailureOk,
+                          child: const Text('OK'),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
