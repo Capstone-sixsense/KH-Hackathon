@@ -1,19 +1,19 @@
-# 환경변수 – 절대 커밋 금지
 .env
+.env.*
+!.env.example
 
-.cache
-
-# Python
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
 .venv/
+.pytest_cache/
+.omc/
+backend/tests/quality_test_30*.py
 
-# Flutter
 frontend/build/
 frontend/.dart_tool/
 frontend/.flutter-plugins
 frontend/.flutter-plugins-dependencies
 
-# Docker
 *.log
+.DS_Store
+Thumbs.db
