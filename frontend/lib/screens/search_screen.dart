@@ -18,6 +18,17 @@ class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _controller = TextEditingController();
   final RecommendationApi _api = RecommendationApi();
   static const Duration _dialogCloseDelay = Duration(milliseconds: 220);
+  static const int _maxHistoryCount = 8;
+  static const List<Color> _historyPastelColors = [
+    Color(0xFFF6E8E9),
+    Color(0xFFEAF4E2),
+    Color(0xFFE7F3FC),
+    Color(0xFFF0E8FB),
+    Color(0xFFFFF0DC),
+    Color(0xFFEAF7F1),
+    Color(0xFFF1F5F9),
+  ];
+  final List<String> _searchHistory = [];
 
   void _appendKeyword(String keyword) {
     final current = _controller.text.trim();
@@ -40,7 +51,8 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Future<void> _startMockSearch() async {
-    final keyword = _controller.text.trim().isEmpty ? '너랑 나, IU' : _controller.text.trim();
+    final rawInput = _controller.text.trim();
+    final keyword = rawInput.isEmpty ? '너랑 나, IU' : rawInput;
     final query = _buildQuery(keyword);
     showDialog<void>(
       context: context,
@@ -57,6 +69,14 @@ class _SearchScreenState extends State<SearchScreen> {
       await _closeLoadingDialogWithDelay();
       if (!mounted) {
         return;
+      }
+      final hasAnyResult = response.similar.isNotEmpty || response.reverse.isNotEmpty || response.opposite.isNotEmpty;
+      if (!hasAnyResult) {
+        await _showSearchNotFoundDialog();
+        return;
+      }
+      if (rawInput.isNotEmpty) {
+        _recordSearchHistory(rawInput);
       }
       await Navigator.of(context).push(
         PageRouteBuilder<void>(
@@ -96,9 +116,7 @@ class _SearchScreenState extends State<SearchScreen> {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('추천 결과를 불러오지 못했습니다: $e')),
-      );
+      await _showSearchNotFoundDialog();
     }
   }
 
@@ -120,9 +138,40 @@ class _SearchScreenState extends State<SearchScreen> {
     return keyword.trim();
   }
 
+  void _recordSearchHistory(String keyword) {
+    final normalized = keyword.trim();
+    if (normalized.isEmpty) {
+      return;
+    }
+    setState(() {
+      _searchHistory.removeWhere((item) => item.toLowerCase() == normalized.toLowerCase());
+      _searchHistory.insert(0, normalized);
+      if (_searchHistory.length > _maxHistoryCount) {
+        _searchHistory.removeRange(_maxHistoryCount, _searchHistory.length);
+      }
+    });
+  }
+
+  Future<void> _showSearchNotFoundDialog() async {
+    return showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('검색 실패'),
+          content: const Text('음악을 찾을 수 없어요. 다시 입력해주세요.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    const suggestions = ['새벽 감성', '브릿팝', '시티팝', '로파이', '소수 취향'];
     final screenWidth = MediaQuery.of(context).size.width;
     final horizontalInset = math.min(500.0, screenWidth * 0.12);
     final contentWidth = math.max(320.0, screenWidth - (horizontalInset * 2));
@@ -213,21 +262,46 @@ class _SearchScreenState extends State<SearchScreen> {
                               ),
                             ),
                             const SizedBox(height: 16),
-                            Wrap(
-                              alignment: WrapAlignment.center,
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: suggestions
-                                  .map(
-                                    (item) => ActionChip(
-                                      backgroundColor: const Color(0xFF1A1A25),
-                                      side: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
-                                      label: Text(item, style: const TextStyle(color: Color(0xFFE4E4E7), fontSize: 12)),
-                                      onPressed: () => setState(() => _appendKeyword(item)),
-                                    ),
-                                  )
-                                  .toList(),
-                            ),
+                            if (_searchHistory.isNotEmpty) ...[
+                              const Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  '최근 검색',
+                                  style: TextStyle(color: Color(0xFFA1A1AA), fontSize: 12, fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                alignment: WrapAlignment.center,
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: _searchHistory
+                                    .asMap()
+                                    .entries
+                                    .map(
+                                      (entry) => InkWell(
+                                        borderRadius: BorderRadius.circular(10),
+                                        onTap: () => setState(() => _appendKeyword(entry.value)),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                                          decoration: BoxDecoration(
+                                            color: _historyPastelColors[entry.key % _historyPastelColors.length].withValues(alpha: 0.62),
+                                            borderRadius: BorderRadius.circular(10),
+                                          ),
+                                          child: Text(
+                                            entry.value,
+                                            style: const TextStyle(
+                                              color: Color(0xFF1F2937),
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
+                              ),
+                            ],
                             const SizedBox(height: 26),
                             SizedBox(
                               width: math.min(maxContentWidth * 0.52, 220),
