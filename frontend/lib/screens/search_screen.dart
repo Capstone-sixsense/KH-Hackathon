@@ -158,6 +158,8 @@ class _SearchScreenState extends State<SearchScreen> {
                               padding: const EdgeInsets.symmetric(horizontal: 16),
                               child: TextField(
                                 controller: _controller,
+                                textInputAction: TextInputAction.search,
+                                onSubmitted: (_) => _startMockSearch(),
                                 textAlign: TextAlign.center,
                                 style: const TextStyle(color: Color(0xFFF4F4F5), fontSize: 15),
                                 decoration: const InputDecoration(
