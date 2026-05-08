@@ -15,6 +15,6 @@ void main() {
     await tester.pumpWidget(const SideBApp());
 
     expect(find.text('Side-B'), findsOneWidget);
-    expect(find.text('메이저 바깥의 음악을 발견하는 탐색기'), findsOneWidget);
+    expect(find.text('들리지 않던 쪽으로, 취향의 이면을 넘기다'), findsOneWidget);
   });
 }
