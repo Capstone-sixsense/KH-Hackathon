@@ -112,7 +112,8 @@ async def normalize_input(
     lastfm: pylast.LastFMNetwork,
     search_limit: int = 5,
 ) -> tuple[str, str, str] | tuple[None, None, None]:
-    """Spotify 후보 중 Last.fm 유사 트랙 데이터가 있는 첫 번째 트랙을 반환한다."""
+    """Last.fm 검증 후보를 우선하되, 없으면 Spotify 첫 후보를 반환한다."""
+    spotify_fallback: tuple[str, str, str] | None = None
     try:
         results = await asyncio.to_thread(
             sp.search, q=query, type="track", limit=search_limit
@@ -120,9 +121,16 @@ async def normalize_input(
         items = results["tracks"]["items"]
 
         for track in items:
-            name     = track["name"]
-            artist   = track["artists"][0]["name"]
-            track_id = track["id"]
+            name = str(track.get("name") or "")
+            artists = track.get("artists") or []
+            artist = str(artists[0].get("name") or "") if artists else ""
+            track_id = str(track.get("id") or "")
+
+            if not name or not artist or not track_id:
+                continue
+
+            if spotify_fallback is None:
+                spotify_fallback = (name, artist, track_id)
 
             # Last.fm에 getSimilar 데이터가 있는지 검증
             try:
@@ -137,15 +145,22 @@ async def normalize_input(
                     return name, artist, track_id
 
                 logger.info(
-                    "[Normalize] Last.fm 데이터 없음, 다음 후보로: '%s - %s'",
+                    "[Normalize] Last.fm 유사 트랙 없음, Spotify 후보 보류: '%s - %s'",
                     name, artist,
                 )
             except Exception:
                 logger.info(
-                    "[Normalize] Last.fm 조회 실패, 다음 후보로: '%s - %s'",
+                    "[Normalize] Last.fm 조회 실패, Spotify 후보 보류: '%s - %s'",
                     name, artist,
                 )
                 continue
+
+        if spotify_fallback:
+            logger.info(
+                "[Normalize] Last.fm 검증 후보 없음. Spotify 첫 후보로 fallback: '%s - %s'",
+                spotify_fallback[0], spotify_fallback[1],
+            )
+            return spotify_fallback
 
     except Exception as e:
         logger.error("[Normalize] Spotify 검색 실패: %s", e)
