@@ -103,7 +103,6 @@ def _sp_search(sp: spotipy.Spotify, track_name: str, artist: str) -> dict | None
         logger.warning("Spotify 검색 실패 (%s - %s): %s", track_name, artist, e)
         return None
 
-<<<<<<< HEAD
 async def normalize_input(
     query: str,
     sp: spotipy.Spotify,
@@ -153,8 +152,6 @@ async def normalize_input(
 
     return None, None, None
 
-=======
->>>>>>> abd027649316a8be1c7a236f17fdbedffac058b5
 
 async def _enrich_with_spotify(
     sp: spotipy.Spotify,

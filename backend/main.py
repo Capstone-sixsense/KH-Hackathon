@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 """
 main.py
 ─────────────────────────────────────────────────────────────────
@@ -140,6 +139,3 @@ async def recommend(req: RecommendRequest):
     )
 
 
-=======
-from app.main import app
->>>>>>> abd027649316a8be1c7a236f17fdbedffac058b5
