@@ -1,6 +1,10 @@
 # 프로젝트 명: Side-B
 # 팀 명: Six Sense
 
+<p align="center">
+  <img src="./frontend/assets/images/search.png" alt="Side-B 검색 화면" width="720" />
+</p>
+
 Side-B는 레코드의 B-side처럼 가려진 음악들을 다시 들려주는 서비스입니다. 
 사용자가 곡·아티스트·키워드를 입력하면 Spotify·Last.fm 데이터를 활용해 **유사 추천, 반대(Reverse Top 100) 스타일, 반대 무드 탐색, 숨은 곡 후보** 등을 함께 보여 줍니다.
 
