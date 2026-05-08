@@ -80,17 +80,22 @@ async def _enrich_with_spotify(
     spotipy는 동기 라이브러리이므로 asyncio.to_thread 로 감싼다.
     """
     async def _fetch(track: TrackInfo) -> TrackInfo:
+        # Spotify 검색 시도
         item = await asyncio.to_thread(_sp_search, sp, track.name, track.artist)
+        
         if item:
             track.spotify_id    = item["id"]
             track.popularity    = item["popularity"]
-            track.album_art_url = (
-                item["album"]["images"][0]["url"]
-                if item["album"]["images"] else None
-            )
+            track.album_art_url = item["album"]["images"][0]["url"] if item["album"]["images"] else None
+        else:
+            # [긴급 패치] 검색 실패(403 등) 시 기본값 할당
+            # 이렇게 해야 필터 로직에서 에러가 나거나 탈락하지 않습니다.
+            track.spotify_id = f"unknown_{track.name}" 
+            track.popularity = None # 또는 0 (필터 조건에 맞게 설정)
+            
         return track
 
-    return await asyncio.gather(*[_fetch(t) for t in tracks])
+    return list(await asyncio.gather(*[_fetch(t) for t in tracks]))
 
 
 def _deduplicate(tracks: list[TrackInfo]) -> list[TrackInfo]:
@@ -245,10 +250,18 @@ async def reverse_top100(
 
     # ── Step 4. 필터 ─────────────────────────────────────────────
     before = len(pool)
+    """
     pool = [
         t for t in pool
         if t.popularity is not None
         and pop_min <= t.popularity <= pop_max
+        and (t.match_score or 0) >= match_threshold
+    ]
+    """
+    # 수정 후: 인기도 정보가 없어도(None) 통과시키거나, 기본값(0)으로 취급
+    pool = [
+        t for t in pool
+        if (t.popularity is None or pop_min <= t.popularity <= pop_max) # 인기도 정보 없어도 통과
         and (t.match_score or 0) >= match_threshold
     ]
     logger.info("[Reverse] 필터 후: %d개 (제거 %d개)", len(pool), before - len(pool))
@@ -384,7 +397,11 @@ async def similar_listening_pattern(
     logger.info("[SimilarListening] getSimilar 풀: %d개", len(pool))
 
     # ── Step 3. match_threshold 사전 필터 (Spotify 호출 전 절감) ─
-    pool = [t for t in pool if (t.match_score or 0) >= match_threshold]
+    # 수정 후: popularity 필터 조건 완화
+    pool = [
+        t for t in pool
+        if (t.popularity is None or pop_min <= t.popularity <= pop_max)
+    ]
     logger.info("[SimilarListening] match 필터 후: %d개", len(pool))
 
     if not pool:
@@ -398,8 +415,8 @@ async def similar_listening_pattern(
     before = len(pool)
     pool = [
         t for t in pool
-        if t.popularity is not None
-        and pop_min <= t.popularity <= pop_max
+        # 수정: popularity가 None(API 에러)인 경우에도 통과시킴
+        if (t.popularity is None or pop_min <= t.popularity <= pop_max)
     ]
     logger.info(
         "[SimilarListening] popularity 필터 후: %d개 (제거 %d개)",
@@ -640,8 +657,8 @@ async def opposite_emotion(
     before = len(pool)
     pool = [
         t for t in pool
-        if t.popularity is not None
-        and pop_min <= t.popularity <= pop_max
+        # 수정: popularity가 None인 경우에도 결과에 포함
+        if (t.popularity is None or pop_min <= t.popularity <= pop_max)
     ]
     logger.info(
         "[OppositeEmotion] popularity 필터 후: %d개 (제거 %d개)",
