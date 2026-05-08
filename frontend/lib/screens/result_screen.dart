@@ -70,7 +70,7 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
     final mainTrack = _buildMainTrack(allTracks);
     final groups = [
       _NodeData(
-        label: '의외로 낮은 유사도',
+        label: '선택받지 못한 노래들',
         description: 'reverse',
         score: widget.response.reverse.length.toDouble(),
         anchor: const Offset(0.18, 0.20),
@@ -78,7 +78,7 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
         tracks: widget.response.reverse,
       ),
       _NodeData(
-        label: '개인 맞춤형 추천',
+        label: '비슷한 취향의 노래들',
         description: 'similar',
         score: widget.response.similar.length.toDouble(),
         anchor: const Offset(0.84, 0.34),
@@ -86,7 +86,7 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
         tracks: widget.response.similar,
       ),
       _NodeData(
-        label: '기타 탐색',
+        label: '반대 취향의 노래들',
         description: 'opposite',
         score: widget.response.opposite.length.toDouble(),
         anchor: const Offset(0.72, 0.78),
@@ -94,7 +94,7 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
         tracks: widget.response.opposite,
       ),
       _NodeData(
-        label: '소수 취향 확장',
+        label: '더 알아보고 싶은 곡들',
         description: 'hidden',
         score: widget.response.hidden.length.toDouble(),
         anchor: const Offset(0.28, 0.78),
