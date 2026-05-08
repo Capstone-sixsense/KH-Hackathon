@@ -3,7 +3,9 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:khuthon/models/recommendation_models.dart';
 import 'package:khuthon/screens/result_screen.dart';
+import 'package:khuthon/services/recommendation_api.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -14,6 +16,7 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _controller = TextEditingController();
+  final RecommendationApi _api = RecommendationApi();
 
   void _appendKeyword(String keyword) {
     final current = _controller.text.trim();
@@ -36,20 +39,47 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Future<void> _startMockSearch() async {
-    final keyword = _controller.text.trim().isEmpty ? 'midnight jazz' : _controller.text.trim();
-    await showDialog<void>(
+    final keyword = _controller.text.trim().isEmpty ? '너랑 나, IU' : _controller.text.trim();
+    final parsed = _parseInput(keyword);
+    showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (_) => const VinylLoadingDialog(),
     );
-    if (!mounted) {
-      return;
+    try {
+      final response = await _api.recommend(
+        RecommendRequest(trackName: parsed.$1, artist: parsed.$2),
+      );
+      if (!mounted) {
+        return;
+      }
+      Navigator.of(context).pop();
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ResultScreen(keyword: keyword, response: response),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('추천 결과를 불러오지 못했습니다: $e')),
+      );
     }
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ResultScreen(keyword: keyword),
-      ),
-    );
+  }
+
+  (String, String) _parseInput(String keyword) {
+    final dash = keyword.split('-').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    if (dash.length >= 2) {
+      return (dash.first, dash[1]);
+    }
+    final comma = keyword.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    if (comma.length >= 2) {
+      return (comma.first, comma[1]);
+    }
+    return (keyword.trim(), 'IU');
   }
 
   @override
