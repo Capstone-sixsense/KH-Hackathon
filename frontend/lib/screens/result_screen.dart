@@ -18,10 +18,38 @@ class ResultScreen extends StatelessWidget {
         ? (allTracks..sort((a, b) => (b.reverseScore ?? 0).compareTo(a.reverseScore ?? 0))).first
         : null;
     final groups = [
-      _NodeData('의외로 낮은 유사도', response.reverse.length.toDouble(), const Offset(0.18, 0.20), const Color(0xFFF472B6)),
-      _NodeData('개인 맞춤형 추천', response.similar.length.toDouble(), const Offset(0.84, 0.34), const Color(0xFF2DD4BF)),
-      _NodeData('기타 탐색', response.opposite.length.toDouble(), const Offset(0.72, 0.78), const Color(0xFF64748B)),
-      _NodeData('소수 취향 확장', allTracks.length.toDouble(), const Offset(0.28, 0.78), const Color(0xFF60A5FA)),
+      _NodeData(
+        label: '의외로 낮은 유사도',
+        description: '반대 감성 기반 추천',
+        score: response.reverse.length.toDouble(),
+        anchor: const Offset(0.18, 0.20),
+        color: const Color(0xFFF472B6),
+        tracks: response.reverse,
+      ),
+      _NodeData(
+        label: '개인 맞춤형 추천',
+        description: '비슷한 청취 패턴 추천',
+        score: response.similar.length.toDouble(),
+        anchor: const Offset(0.84, 0.34),
+        color: const Color(0xFF2DD4BF),
+        tracks: response.similar,
+      ),
+      _NodeData(
+        label: '기타 탐색',
+        description: '감성 반대편 탐색',
+        score: response.opposite.length.toDouble(),
+        anchor: const Offset(0.72, 0.78),
+        color: const Color(0xFF64748B),
+        tracks: response.opposite,
+      ),
+      _NodeData(
+        label: '소수 취향 확장',
+        description: '전체 풀 확장 탐색',
+        score: allTracks.length.toDouble(),
+        anchor: const Offset(0.28, 0.78),
+        color: const Color(0xFF60A5FA),
+        tracks: allTracks,
+      ),
     ];
 
     return Scaffold(
@@ -75,9 +103,12 @@ class ResultScreen extends StatelessWidget {
                             ),
                             ...groups.map((node) {
                               return Positioned(
-                                left: constraints.maxWidth * node.anchor.dx - 56,
-                                top: constraints.maxHeight * node.anchor.dy - 42,
-                                child: _GroupNode(node: node),
+                                left: constraints.maxWidth * node.anchor.dx - 74,
+                                top: constraints.maxHeight * node.anchor.dy - 62,
+                                child: _GroupNode(
+                                  node: node,
+                                  onTap: () => _openGroupTracks(context, node),
+                                ),
                               );
                             }),
                           ],
@@ -89,6 +120,20 @@ class ResultScreen extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openGroupTracks(BuildContext context, _NodeData node) async {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _GroupTracksScreen(
+          title: node.label,
+          subtitle: node.description,
+          color: node.color,
+          tracks: node.tracks,
+          initialMode: _TrackViewMode.gallery,
         ),
       ),
     );
@@ -175,40 +220,90 @@ class _MainTrackCard extends StatelessWidget {
   }
 }
 
-class _GroupNode extends StatelessWidget {
-  const _GroupNode({required this.node});
+class _GroupNode extends StatefulWidget {
+  const _GroupNode({required this.node, required this.onTap});
 
   final _NodeData node;
+  final VoidCallback onTap;
+
+  @override
+  State<_GroupNode> createState() => _GroupNodeState();
+}
+
+class _GroupNodeState extends State<_GroupNode> {
+  bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 112,
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: const Color(0xFF15151D).withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: node.color.withValues(alpha: 0.68)),
-        boxShadow: [
-          BoxShadow(color: node.color.withValues(alpha: 0.16), blurRadius: 14, offset: const Offset(0, 6)),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.album_rounded, size: 24, color: node.color),
-          const SizedBox(height: 6),
-          Text(
-            node.label,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+    final galleryTracks = widget.node.tracks.take(4).toList();
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedScale(
+          scale: _hovered ? 1.06 : 1.0,
+          duration: const Duration(milliseconds: 170),
+          curve: Curves.easeOut,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 170),
+            width: 148,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFF15151D).withValues(alpha: 0.9),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: widget.node.color.withValues(alpha: _hovered ? 0.95 : 0.68)),
+              boxShadow: [
+                BoxShadow(
+                  color: widget.node.color.withValues(alpha: _hovered ? 0.28 : 0.16),
+                  blurRadius: _hovered ? 18 : 14,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 128,
+                  height: 84,
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(child: _AlbumThumb(track: galleryTracks.isNotEmpty ? galleryTracks[0] : null, color: widget.node.color)),
+                          const SizedBox(width: 4),
+                          Expanded(child: _AlbumThumb(track: galleryTracks.length > 1 ? galleryTracks[1] : null, color: widget.node.color)),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Expanded(child: _AlbumThumb(track: galleryTracks.length > 2 ? galleryTracks[2] : null, color: widget.node.color)),
+                          const SizedBox(width: 4),
+                          Expanded(child: _AlbumThumb(track: galleryTracks.length > 3 ? galleryTracks[3] : null, color: widget.node.color)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  widget.node.label,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  widget.node.description,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 10, color: Color(0xFFA1A1AA)),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            '${node.score.round()}곡',
-            style: const TextStyle(fontSize: 11, color: Color(0xFFA1A1AA)),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -239,12 +334,63 @@ class _GraphEdgePainter extends CustomPainter {
 }
 
 class _NodeData {
-  const _NodeData(this.label, this.score, this.anchor, this.color);
+  const _NodeData({
+    required this.label,
+    required this.description,
+    required this.score,
+    required this.anchor,
+    required this.color,
+    required this.tracks,
+  });
 
   final String label;
+  final String description;
   final double score;
   final Offset anchor;
   final Color color;
+  final List<TrackRecommendation> tracks;
+}
+
+class _AlbumThumb extends StatelessWidget {
+  const _AlbumThumb({required this.track, required this.color});
+
+  final TrackRecommendation? track;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = track?.albumArtUrl ?? '';
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        width: double.infinity,
+        height: 40,
+        color: const Color(0xFF1D1D27),
+        child: url.isNotEmpty
+            ? Image.network(
+                url,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _fallback(),
+              )
+            : _fallback(),
+      ),
+    );
+  }
+
+  Widget _fallback() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [color.withValues(alpha: 0.45), const Color(0xFF111827)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: const Center(
+        child: Icon(Icons.music_note_rounded, size: 14, color: Colors.white70),
+      ),
+    );
+  }
 }
 
 class _GlowOrb extends StatelessWidget {
