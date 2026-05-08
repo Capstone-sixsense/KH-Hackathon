@@ -42,6 +42,7 @@ class TrackInfo:
     algo:          str         = ""     # 알고리즘 식별자
     label:         str         = ""     # 프론트 표시용 레이블
     reason_tags:   list[str]   = field(default_factory=list)  # 추천 근거 태그
+    artist_listeners: int | None = None  # 추가: 아티스트 전체 리스너 수
 
 
 # ════════════════════════════════════════════════════════════════
@@ -153,10 +154,11 @@ async def reverse_top100(
     # ── 풀 구성 파라미터 ──────────────────────────────────────
     similar_limit:   int   = 50,    # getSimilar 가져올 수
     tag_limit:       int   = 50,    # tag.getTopTracks 가져올 수
-    top_tags:        int   = 2,     # 사용할 상위 태그 수
+    tag_start:       int   = 3,     # 태그 시작 인덱스 (상위 주류 태그 스킵)
+    top_tags:        int   = 2,     # 사용할 태그 수
     # ── 필터 파라미터 ─────────────────────────────────────────
     pop_min:         int   = 5,     # popularity 하한 (유령 트랙 제외)
-    pop_max:         int   = 40,    # popularity 상한 (이미 알려진 트랙 제외)
+    pop_max:         int   = 50,    # popularity 상한 (이미 알려진 트랙 제외)
     match_threshold: float = 0.2,   # 음악적 유사도 최소값
     # ── 가중치 ───────────────────────────────────────────────
     w_popularity:    float = 0.5,   # (1 - popularity_norm) 가중치
@@ -195,18 +197,55 @@ async def reverse_top100(
     Returns:
         list[TrackInfo]  reverse_score 내림차순 상위 10개 (후보 없을 시 [])
     """
+    import re
+
+    # 제거할 태그 패턴: 아티스트명 태그, 연도 태그, 차트 태그
+    _TAG_BLACKLIST_PATTERNS = [
+        r"^\d{4}s?$",           # 2017, 2010s 등 연도
+        r"best of \d{4}",       # best of 2017
+        r"^top\b",              # top 40, top hits
+        r"^chart",              # charts, charted
+        r"^favorite",           # favorites
+        r"^loved",              # loved tracks
+        r"^my ",                # my music
+        r"^seen live",          # seen live
+    ]
+
+    def _is_blacklisted_tag(tag: str, artist: str) -> bool:
+        """아티스트 이름 태그, 연도 태그, 차트 태그 등 유해 태그 판별."""
+        normalized = tag.lower().strip()
+        # 아티스트 이름이 태그로 들어온 경우
+        if artist.lower() in normalized:
+            return True
+        # 블랙리스트 패턴 매칭
+        for pattern in _TAG_BLACKLIST_PATTERNS:
+            if re.search(pattern, normalized):
+                return True
+        return False
 
     # ── Step 1. 기준 트랙 Last.fm 태그 수집 ─────────────────────
     logger.info("[Reverse] 기준 트랙 태그 수집: %s - %s", track_name, artist)
     try:
-        lf_track   = lastfm.get_track(artist, track_name)
+        lf_track     = lastfm.get_track(artist, track_name)
         top_tag_objs = await asyncio.to_thread(lf_track.get_top_tags)
-        tag_names  = [t.item.get_name() for t in top_tag_objs[:top_tags]]
+
+        # 블랙리스트 먼저 제거한 뒤 슬라이싱
+        filtered_tags = [
+            t.item.get_name() for t in top_tag_objs
+            if not _is_blacklisted_tag(t.item.get_name(), artist)
+        ]
+
+        # 블랙리스트 제거 후 tag_start~top_tags 슬라이싱
+        tag_names = filtered_tags[tag_start : tag_start + top_tags]
+
+        # fallback: 필터 후 태그가 부족하면 앞에서부터
+        if not tag_names:
+            tag_names = filtered_tags[:top_tags]
     except Exception as e:
         logger.warning("[Reverse] 태그 수집 실패: %s", e)
         tag_names = []
 
-    logger.info("[Reverse] 사용 태그: %s", tag_names)
+    logger.info("[Reverse] 사용 태그 (블랙리스트 제거 후): %s", tag_names)
 
     # ── Step 2. 풀 구성 (getSimilar + tag.getTopTracks 병렬) ────
     async def fetch_similar() -> list[TrackInfo]:
@@ -248,39 +287,54 @@ async def reverse_top100(
     # ── Step 3. Spotify 인기도 보강 (병렬) ──────────────────────
     pool = await _enrich_with_spotify(sp, pool)
 
+    # ── [추가] Step 3.5 아티스트 리스너 수 보강 ──────────────────
+    async def fetch_artist_listeners(track: TrackInfo) -> TrackInfo:
+        try:
+            a_obj = lastfm.get_artist(track.artist)
+            # 병렬 호출을 위해 asyncio.to_thread 사용
+            listeners = await asyncio.to_thread(a_obj.get_listener_count)
+            track.artist_listeners = int(listeners)
+        except Exception:
+            track.artist_listeners = 0 
+        return track
+
+    # 병렬로 모든 후보곡의 아티스트 리스너 수 수집
+    pool = list(await asyncio.gather(*[fetch_artist_listeners(t) for t in pool]))
+
     # ── Step 4. 필터 ─────────────────────────────────────────────
     before = len(pool)
-    """
+    # 필터 조건 강화: 인기도 상한선과 아티스트 체급을 동시에 체크
     pool = [
         t for t in pool
-        if t.popularity is not None
-        and pop_min <= t.popularity <= pop_max
-        and (t.match_score or 0) >= match_threshold
-    ]
-    """
-    # 수정 후: 인기도 정보가 없어도(None) 통과시키거나, 기본값(0)으로 취급
-    pool = [
-        t for t in pool
-        if (t.popularity is None or pop_min <= t.popularity <= pop_max) # 인기도 정보 없어도 통과
+        if (t.popularity is not None and pop_min <= t.popularity <= pop_max)  # 파라미터 사용
+        and (t.artist_listeners is None or t.artist_listeners < 500000)       # 기준 완화
         and (t.match_score or 0) >= match_threshold
     ]
     logger.info("[Reverse] 필터 후: %d개 (제거 %d개)", len(pool), before - len(pool))
 
-    if not pool:
-        logger.warning("[Reverse] 필터 후 후보 없음 — pop_max를 높여보세요.")
-        return []
-
     # ── Step 5. Reverse Score 계산 ───────────────────────────────
     pool_size = len(pool)
+    # 풀 내 최대 리스너 수 파악 (정규화용)
+    max_listeners = max((t.artist_listeners or 0) for t in pool) or 1
+
+    original_tag_limit = tag_limit  # 원본 풀 크기 기준으로 정규화
+
     for t in pool:
-        p_norm = (t.popularity or 0) / 100
-        r_norm = (t.tag_rank   or pool_size) / pool_size
-        m      = t.match_score or 0
+        p_score = 1 - (t.popularity / 100)
+        m_score = t.match_score or 0
+        a_score = max(0, 1 - (t.artist_listeners or 0) / 100000)
+
+        # tag_rank를 원본 tag_limit 기준으로 정규화 → 음수 방지
+        if t.tag_rank:
+            r_score = max(0, 1 - (t.tag_rank / original_tag_limit))
+        else:
+            r_score = 0.5  # getSimilar 출처 트랙은 중간값
 
         t.reverse_score = (
-            (1 - p_norm) * w_popularity +
-            m            * w_match      +
-            (1 - r_norm) * w_tag_rank
+            p_score * 0.4 +
+            a_score * 0.3 +
+            m_score * 0.2 +
+            r_score * 0.1
         )
 
     # ── Step 6. 최종 선정 (상위 10개 리스트) ───────────────────────
