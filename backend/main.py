@@ -84,7 +84,8 @@ async def recommend(req: RecommendRequest):
     logger.info(f"추천 요청 수신 — Query: '{req.query}'")
 
     # 1. 입력 정규화 (단일 키워드 -> 공식 정보)
-    name, artist, spotify_id = await normalize_input(req.query, sp)
+    # normalize_input에 lf 인자 추가
+    name, artist, spotify_id = await normalize_input(req.query, sp, lf)
 
     if not name or not artist:
         logger.warning(f"검색 결과 없음: {req.query}")

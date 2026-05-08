@@ -98,16 +98,53 @@ def _sp_search(sp: spotipy.Spotify, track_name: str, artist: str) -> dict | None
         logger.warning("Spotify 검색 실패 (%s - %s): %s", track_name, artist, e)
         return None
 
-async def normalize_input(query: str, sp: spotipy.Spotify) -> tuple[str, str, str] | tuple[None, None, None]:
-    """사용하지 않는 normalize_track_input을 통합하여 하나만 유지"""
+async def normalize_input(
+    query: str,
+    sp: spotipy.Spotify,
+    lastfm: pylast.LastFMNetwork,   # lastfm 추가
+    search_limit: int = 5,          # 후보 여러 개 시도
+) -> tuple[str, str, str] | tuple[None, None, None]:
+    """
+    Spotify 검색 후보 중 Last.fm 데이터가 실제로 존재하는
+    첫 번째 트랙을 반환한다.
+    """
     try:
-        results = await asyncio.to_thread(sp.search, q=query, type="track", limit=1)
+        results = await asyncio.to_thread(
+            sp.search, q=query, type="track", limit=search_limit
+        )
         items = results["tracks"]["items"]
-        if items:
-            track = items[0]
-            return track["name"], track["artists"][0]["name"], track["id"]
+
+        for track in items:
+            name     = track["name"]
+            artist   = track["artists"][0]["name"]
+            track_id = track["id"]
+
+            # Last.fm에 getSimilar 데이터가 있는지 검증
+            try:
+                lf_track = lastfm.get_track(artist, name)
+                similar  = await asyncio.to_thread(lf_track.get_similar, limit=1)
+
+                if similar:   # 유사 트랙이 1개라도 있으면 사용 가능
+                    logger.info(
+                        "[Normalize] 최종 선택: '%s - %s' (Last.fm 검증 완료)",
+                        name, artist,
+                    )
+                    return name, artist, track_id
+
+                logger.info(
+                    "[Normalize] Last.fm 데이터 없음, 다음 후보로: '%s - %s'",
+                    name, artist,
+                )
+            except Exception:
+                logger.info(
+                    "[Normalize] Last.fm 조회 실패, 다음 후보로: '%s - %s'",
+                    name, artist,
+                )
+                continue
+
     except Exception as e:
-        logger.error(f"[Normalize] 검색 실패: {e}")
+        logger.error("[Normalize] Spotify 검색 실패: %s", e)
+
     return None, None, None
 
 
