@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:khuthon/models/recommendation_models.dart';
+import 'package:khuthon/services/preview_service.dart';
 import 'package:khuthon/widgets/turntable_tonearm.dart';
 
 enum _TrackViewMode { gallery, list }
@@ -863,11 +864,30 @@ class _GroupTracksScreen extends StatefulWidget {
 
 class _GroupTracksScreenState extends State<_GroupTracksScreen> {
   late _TrackViewMode _mode;
+  final _preview = PreviewService.instance;
+  String? _playingKey;
+  PreviewLoadState _loadState = PreviewLoadState.idle;
 
   @override
   void initState() {
     super.initState();
     _mode = widget.initialMode;
+    _playingKey = _preview.currentKey;
+    _loadState = _preview.loadState;
+    _preview.keyStream.listen((key) {
+      if (mounted) setState(() {
+        _playingKey = key;
+        _loadState = _preview.loadState;
+      });
+    });
+  }
+
+  void _togglePreview(TrackRecommendation track) {
+    _preview.toggle(
+      track: track.name,
+      artist: track.artist,
+      albumArtUrl: track.albumArtUrl,
+    );
   }
 
   @override
@@ -966,9 +986,13 @@ class _GroupTracksScreenState extends State<_GroupTracksScreen> {
                       itemCount: widget.tracks.length,
                       itemBuilder: (context, index) {
                         final track = widget.tracks[index];
+                        final key = PreviewService.buildKey(track.name, track.artist);
                         return _TrackGalleryCard(
                           track: track,
                           color: widget.color,
+                          isActive: _playingKey == key,
+                          loadState: _playingKey == key ? _loadState : PreviewLoadState.idle,
+                          onToggle: () => _togglePreview(track),
                         );
                       },
                     )
@@ -979,12 +1003,27 @@ class _GroupTracksScreenState extends State<_GroupTracksScreen> {
                           const SizedBox(height: 8),
                       itemBuilder: (context, index) {
                         final track = widget.tracks[index];
+                        final key = PreviewService.buildKey(track.name, track.artist);
                         return _TrackListTile(
                           track: track,
                           color: widget.color,
+                          isActive: _playingKey == key,
+                          loadState: _playingKey == key ? _loadState : PreviewLoadState.idle,
+                          onToggle: () => _togglePreview(track),
                         );
                       },
                     ),
+            ),
+            // 미니 플레이어
+            AnimatedSize(
+              duration: const Duration(milliseconds: 260),
+              curve: Curves.easeOutCubic,
+              child: _playingKey != null
+                  ? _MiniPlayer(
+                      color: widget.color,
+                      onStop: () => _preview.stop(),
+                    )
+                  : const SizedBox.shrink(),
             ),
           ],
         ),
@@ -994,10 +1033,19 @@ class _GroupTracksScreenState extends State<_GroupTracksScreen> {
 }
 
 class _TrackGalleryCard extends StatelessWidget {
-  const _TrackGalleryCard({required this.track, required this.color});
+  const _TrackGalleryCard({
+    required this.track,
+    required this.color,
+    this.isActive = false,
+    this.loadState = PreviewLoadState.idle,
+    this.onToggle,
+  });
 
   final TrackRecommendation track;
   final Color color;
+  final bool isActive;
+  final PreviewLoadState loadState;
+  final VoidCallback? onToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -1005,7 +1053,12 @@ class _TrackGalleryCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF171721),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+        border: Border.all(
+          color: isActive
+              ? color.withValues(alpha: 0.6)
+              : Colors.white.withValues(alpha: 0.06),
+          width: isActive ? 1.5 : 1.0,
+        ),
       ),
       padding: const EdgeInsets.all(6),
       child: Column(
@@ -1013,9 +1066,64 @@ class _TrackGalleryCard extends StatelessWidget {
         children: [
           AspectRatio(
             aspectRatio: 1,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: _TrackArt(url: track.albumArtUrl, color: color),
+            child: Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: _TrackArt(url: track.albumArtUrl, color: color),
+                ),
+                // 재생 버튼 오버레이
+                Positioned.fill(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: onToggle,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          color: isActive
+                              ? Colors.black.withValues(alpha: 0.45)
+                              : Colors.transparent,
+                          alignment: Alignment.center,
+                          child: isActive
+                              ? _PreviewIcon(
+                                  loadState: loadState,
+                                  color: color,
+                                  size: 26,
+                                )
+                              : null,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // 비활성: 호버용 작은 플레이 버튼
+                if (!isActive)
+                  Positioned(
+                    right: 4,
+                    bottom: 4,
+                    child: GestureDetector(
+                      onTap: onToggle,
+                      child: Container(
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.65),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.play_arrow_rounded,
+                          size: 14,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
           const SizedBox(height: 6),
@@ -1023,7 +1131,11 @@ class _TrackGalleryCard extends StatelessWidget {
             track.name,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: isActive ? color : Colors.white,
+            ),
           ),
           const SizedBox(height: 2),
           Text(
@@ -1085,10 +1197,19 @@ class _ViewModeToggleChip extends StatelessWidget {
 }
 
 class _TrackListTile extends StatelessWidget {
-  const _TrackListTile({required this.track, required this.color});
+  const _TrackListTile({
+    required this.track,
+    required this.color,
+    this.isActive = false,
+    this.loadState = PreviewLoadState.idle,
+    this.onToggle,
+  });
 
   final TrackRecommendation track;
   final Color color;
+  final bool isActive;
+  final PreviewLoadState loadState;
+  final VoidCallback? onToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -1096,6 +1217,9 @@ class _TrackListTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF171721),
         borderRadius: BorderRadius.circular(12),
+        border: isActive
+            ? Border.all(color: color.withValues(alpha: 0.45))
+            : null,
       ),
       child: ListTile(
         leading: ClipRRect(
@@ -1106,11 +1230,38 @@ class _TrackListTile extends StatelessWidget {
             child: _TrackArt(url: track.albumArtUrl, color: color),
           ),
         ),
-        title: Text(track.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Text(
+          track.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: isActive ? color : Colors.white,
+            fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
+          ),
+        ),
         subtitle: Text(
           track.artist,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
+        ),
+        trailing: GestureDetector(
+          onTap: onToggle,
+          child: Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isActive
+                  ? color.withValues(alpha: 0.18)
+                  : Colors.white.withValues(alpha: 0.07),
+              border: Border.all(
+                color: isActive
+                    ? color.withValues(alpha: 0.7)
+                    : Colors.white.withValues(alpha: 0.15),
+              ),
+            ),
+            child: _PreviewIcon(loadState: loadState, color: color, size: 18),
+          ),
         ),
       ),
     );
@@ -1143,6 +1294,168 @@ class _TrackArt extends StatelessWidget {
       child: Icon(
         Icons.music_note_rounded,
         color: color.withValues(alpha: 0.86),
+      ),
+    );
+  }
+}
+
+// ── 재생 상태 아이콘 (로딩/재생/일시정지/정지) ───────────────────
+class _PreviewIcon extends StatelessWidget {
+  const _PreviewIcon({
+    required this.loadState,
+    required this.color,
+    required this.size,
+  });
+
+  final PreviewLoadState loadState;
+  final Color color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    if (loadState == PreviewLoadState.loading) {
+      return Padding(
+        padding: EdgeInsets.all(size * 0.18),
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: color,
+        ),
+      );
+    }
+    final icon = loadState == PreviewLoadState.playing
+        ? Icons.pause_rounded
+        : Icons.play_arrow_rounded;
+    return Icon(icon, size: size, color: color);
+  }
+}
+
+// ── 미니 플레이어 ────────────────────────────────────────────────
+class _MiniPlayer extends StatefulWidget {
+  const _MiniPlayer({required this.color, required this.onStop});
+
+  final Color color;
+  final VoidCallback onStop;
+
+  @override
+  State<_MiniPlayer> createState() => _MiniPlayerState();
+}
+
+class _MiniPlayerState extends State<_MiniPlayer> {
+  final _preview = PreviewService.instance;
+  static const _totalSeconds = 30;
+
+  @override
+  Widget build(BuildContext context) {
+    final trackName = _preview.currentTrackName ?? '';
+    final artist = _preview.currentArtist ?? '';
+    final albumArt = _preview.currentAlbumArt;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF13131C),
+        border: Border(
+          top: BorderSide(color: widget.color.withValues(alpha: 0.35), width: 1),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 진행 바
+          StreamBuilder<Duration>(
+            stream: _preview.positionStream,
+            builder: (context, snap) {
+              final secs = snap.data?.inSeconds.toDouble() ?? 0;
+              final progress = (secs / _totalSeconds).clamp(0.0, 1.0);
+              return LinearProgressIndicator(
+                value: progress,
+                minHeight: 2,
+                backgroundColor: Colors.white.withValues(alpha: 0.08),
+                valueColor: AlwaysStoppedAnimation(widget.color),
+              );
+            },
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            child: Row(
+              children: [
+                // 앨범 아트
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: _TrackArt(url: albumArt, color: widget.color),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // 트랙 정보
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        trackName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        artist,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFFA1A1AA),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // 경과 시간
+                StreamBuilder<Duration>(
+                  stream: _preview.positionStream,
+                  builder: (context, snap) {
+                    final secs = snap.data?.inSeconds ?? 0;
+                    return Text(
+                      '0:${secs.toString().padLeft(2, '0')} / 0:30',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: widget.color.withValues(alpha: 0.85),
+                        fontWeight: FontWeight.w600,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(width: 8),
+                // 정지 버튼
+                GestureDetector(
+                  onTap: widget.onStop,
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: widget.color.withValues(alpha: 0.15),
+                      border: Border.all(
+                        color: widget.color.withValues(alpha: 0.5),
+                      ),
+                    ),
+                    child: Icon(
+                      Icons.stop_rounded,
+                      size: 16,
+                      color: widget.color,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

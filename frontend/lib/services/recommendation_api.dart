@@ -24,7 +24,9 @@ class RecommendationApi {
     return RecommendResponse.fromJson(decoded);
   }
 
-  String _resolveBaseUrl() {
+  String _resolveBaseUrl() => RecommendationApi.resolveBaseUrl();
+
+  static String resolveBaseUrl() {
     const fromDefine = String.fromEnvironment('API_BASE_URL', defaultValue: '');
     if (fromDefine.isNotEmpty) {
       final normalized = fromDefine.trim().toLowerCase();

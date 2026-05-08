@@ -25,6 +25,7 @@ from recommend_algo import (
     similar_listening_pattern,
     tag_based_recommendations,
 )
+from preview import router as preview_router
 
 load_dotenv()
 
@@ -86,6 +87,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(preview_router)
 
 
 @app.get("/health")
