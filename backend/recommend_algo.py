@@ -9,7 +9,9 @@ Recommendations: Last.fm similarity/tag APIs
 import asyncio
 import logging
 import math
+import random
 import re
+import time
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from typing import Any
@@ -22,6 +24,21 @@ logger = logging.getLogger(__name__)
 ITUNES_URL = "https://itunes.apple.com/search"
 DEEZER_URL = "https://api.deezer.com"
 _API_SEMAPHORE = asyncio.Semaphore(25)
+
+# Deezer circuit breaker — 429 감지 시 해당 시각까지 모든 Deezer 호출 스킵
+_DZ_RATE_LIMIT_UNTIL: float = 0.0
+
+
+def _is_dz_rate_limited() -> bool:
+    return time.monotonic() < _DZ_RATE_LIMIT_UNTIL
+
+
+def _mark_dz_rate_limited(headers: dict) -> None:
+    global _DZ_RATE_LIMIT_UNTIL
+    retry_after = int(headers.get("Retry-After", 60))
+    _DZ_RATE_LIMIT_UNTIL = max(_DZ_RATE_LIMIT_UNTIL, time.monotonic() + retry_after)
+    logger.warning("[Deezer] 429 — %d초 차단", retry_after)
+
 
 _BAD_VERSION_MARKERS = (
     "karaoke",
@@ -223,24 +240,32 @@ async def _itunes_search(
 
 
 async def _dz_search(http: httpx.AsyncClient, track_name: str, artist: str) -> dict[str, Any] | None:
+    if _is_dz_rate_limited():
+        return None
+
     clean_name = _clean_title(track_name)
     queries = [
         f'track:"{clean_name}" artist:"{artist}"',
         f"{clean_name} {artist}".strip(),
+        clean_name,  # 3차 폴백: 곡명만
     ]
 
     for query in queries:
+        if _is_dz_rate_limited():
+            return None
         try:
             async with _API_SEMAPHORE:
                 response = await http.get(
                     f"{DEEZER_URL}/search",
                     params={"q": query},
-                    timeout=5.0,
+                    timeout=8.0,
                 )
-                response.raise_for_status()
+            if response.status_code == 429:
+                _mark_dz_rate_limited(dict(response.headers))
+                return None
             items = response.json().get("data", [])
         except Exception as exc:
-            logger.warning("[Deezer] search failed for %r: %s", query, exc)
+            logger.warning("[Deezer] 요청 실패 (%s) q=%r — %s", type(exc).__name__, query[:70], exc)
             continue
 
         best = _select_deezer_item(items, clean_name, artist)
@@ -368,6 +393,33 @@ def _cap_per_artist(tracks: list[TrackInfo], max_per: int = 1) -> list[TrackInfo
             seen[key] = seen.get(key, 0) + 1
             result.append(track)
     return result
+
+
+def _diverse_top_n(
+    pool: list[TrackInfo],
+    top_n: int,
+    *,
+    score_fn=lambda t: t.reverse_score or 0,
+    diversity: float = 0.3,
+    candidate_mult: int = 3,
+) -> list[TrackInfo]:
+    """점수 정규화 후 Gaussian noise로 샘플링 — 같은 입력에도 매번 다른 결과."""
+    if not pool:
+        return []
+    sorted_pool = sorted(pool, key=score_fn, reverse=True)
+    if diversity <= 0.0:
+        return sorted_pool[:top_n]
+    n_candidates = min(len(pool), top_n * candidate_mult)
+    candidates = sorted_pool[:n_candidates]
+    raw_scores = [score_fn(t) for t in candidates]
+    min_s, max_s = min(raw_scores), max(raw_scores)
+    score_range = (max_s - min_s) or 1.0
+    scored = [
+        (t, (s - min_s) / score_range + random.gauss(0, diversity * 0.3))
+        for t, s in zip(candidates, raw_scores)
+    ]
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return [t for t, _ in scored[:top_n]]
 
 
 def _dedupe_tracks(tracks: list[TrackInfo]) -> list[TrackInfo]:
@@ -539,41 +591,103 @@ async def _fill_lastfm_album_art(
 
 
 async def reverse_top100(track_name, artist, http, lastfm, top_n=10) -> list[TrackInfo]:
-    """Discover less-mainstream tracks among similar songs."""
+    """Discover less-mainstream tracks via direct similarity (A) and similar-artist networks (B)."""
     try:
         lf_track = lastfm.get_track(artist, track_name)
-        raw_similar = await asyncio.to_thread(lf_track.get_similar, limit=max(80, top_n * 8))
-        pool = [
-            TrackInfo(
-                name=item.item.get_name(),
-                artist=item.item.get_artist().get_name(),
-                match_score=float(item.match),
-            )
-            for item in raw_similar
+        lf_artist = lastfm.get_artist(artist)
+
+        # ── 소스 A + 유사 아티스트 목록 병렬 수집 ──────────────────
+        raw_similar_tracks, raw_similar_artists = await asyncio.gather(
+            asyncio.to_thread(lf_track.get_similar, limit=max(60, top_n * 6)),
+            asyncio.to_thread(lf_artist.get_similar, limit=3),
+            return_exceptions=True,
+        )
+
+        pool_a: list[TrackInfo] = []
+        if not isinstance(raw_similar_tracks, Exception):
+            pool_a = [
+                TrackInfo(
+                    name=item.item.get_name(),
+                    artist=item.item.get_artist().get_name(),
+                    match_score=float(item.match),
+                )
+                for item in raw_similar_tracks
+            ]
+
+        # ── 소스 B: 유사 아티스트 3명의 상위 20트랙 ─────────────
+        similar_artists = (
+            [] if isinstance(raw_similar_artists, Exception)
+            else [sa.item for sa in raw_similar_artists]
+        )
+
+        async def _fetch_artist_tracks(src, artist_rank: int) -> list[TrackInfo]:
+            synthetic_match = max(0.3, 0.70 - (artist_rank - 1) * 0.1)
+            try:
+                raw = await asyncio.to_thread(src.get_top_tracks, limit=20)
+                return [
+                    TrackInfo(
+                        name=item.item.get_name(),
+                        artist=item.item.get_artist().get_name(),
+                        match_score=synthetic_match,
+                    )
+                    for item in raw
+                ]
+            except Exception:
+                return []
+
+        b_results = await asyncio.gather(
+            *[_fetch_artist_tracks(sa, rank) for rank, sa in enumerate(similar_artists, 1)],
+            return_exceptions=True,
+        )
+        pool_b: list[TrackInfo] = []
+        for res in b_results:
+            if not isinstance(res, Exception):
+                pool_b.extend(res)
+
+        # ── 병합 + 중복 제거 ──────────────────────────────────────
+        input_key = (track_name.lower(), artist.lower())
+        seen: set[str] = set()
+        merged: list[TrackInfo] = []
+        for t in pool_a + pool_b:
+            if (t.name.lower(), t.artist.lower()) == input_key:
+                continue
+            key = _track_key(t)
+            if key not in seen:
+                seen.add(key)
+                merged.append(t)
+
+        logger.info("[Reverse] 후보 A=%d B=%d 합계=%d", len(pool_a), len(pool_b), len(merged))
+
+        # match_score 상위 top_n×8만 보강 (Deezer 호출 최소화)
+        merged.sort(key=lambda t: t.match_score or 0, reverse=True)
+        merged = merged[: top_n * 8]
+        merged = _dedupe_tracks(await _enrich_metadata(http, merged))
+        merged = await _fill_lastfm_album_art(lastfm, merged)
+
+        # ── 비주류 점수 계산 ───────────────────────────────────────
+        obvious_keys = {_track_key(t) for t in merged[:top_n]} if len(merged) > top_n else set()
+        discovery_pool = [t for t in merged if _track_key(t) not in obvious_keys]
+        low_exposure = [
+            t for t in discovery_pool
+            if (t.popularity if t.popularity is not None else 55) < 70
         ]
-        pool = _dedupe_tracks(await _enrich_metadata(http, pool))
-        pool = await _fill_lastfm_album_art(lastfm, pool)
-        pool = sorted(pool, key=lambda item: item.match_score or 0, reverse=True)
-        obvious_keys = {_track_key(track) for track in pool[:top_n]} if len(pool) > top_n else set()
-        discovery_pool = [track for track in pool if _track_key(track) not in obvious_keys]
-        low_exposure_pool = [
-            track for track in discovery_pool if (track.popularity if track.popularity is not None else 55) < 70
-        ]
-        if len(low_exposure_pool) >= top_n:
-            discovery_pool = low_exposure_pool
+        if len(low_exposure) >= top_n:
+            discovery_pool = low_exposure
 
         pool_size = max(len(discovery_pool) - 1, 1)
-        for index, track in enumerate(discovery_pool):
-            popularity = track.popularity if track.popularity is not None else 55
+        for index, t in enumerate(discovery_pool):
+            popularity = t.popularity if t.popularity is not None else 55
             obscurity = max(0.0, min(1.0, (75 - popularity) / 75))
-            match = max(0.0, min(1.0, track.match_score or 0.0))
+            match = max(0.0, min(1.0, t.match_score or 0.0))
             middle_similarity = max(0.0, 1 - (abs(match - 0.35) / 0.45))
             rank_novelty = index / pool_size
-            track.reverse_score = (obscurity * 0.55) + (middle_similarity * 0.30) + (rank_novelty * 0.15)
+            t.reverse_score = (obscurity * 0.55) + (middle_similarity * 0.30) + (rank_novelty * 0.15)
 
-        ranked = sorted(discovery_pool, key=lambda item: item.reverse_score or 0, reverse=True)[:top_n]
-        for track in ranked:
-            track.algo, track.label = "reverse_top100", "알고리즘이 밀어낸 유사 음악"
+        sorted_pool = sorted(discovery_pool, key=lambda t: t.reverse_score or 0, reverse=True)
+        ranked = _diverse_top_n(_cap_per_artist(sorted_pool, max_per=2), top_n)
+        for t in ranked:
+            t.algo, t.label = "reverse_top100", "당신만 모르는 숨겨진 명곡"
+        logger.info("[Reverse] 최종 선정 %d개", len(ranked))
         return ranked
     except Exception as exc:
         logger.warning("[reverse_top100] failed: %s", exc)
