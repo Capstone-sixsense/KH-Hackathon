@@ -53,9 +53,6 @@ class _SearchScreenState extends State<SearchScreen> {
   Future<void> _startMockSearch() async {
     final rawInput = _controller.text.trim();
     final keyword = rawInput.isEmpty ? '너랑 나, IU' : rawInput;
-    if (rawInput.isNotEmpty) {
-      _recordSearchHistory(rawInput);
-    }
     final query = _buildQuery(keyword);
     showDialog<void>(
       context: context,
@@ -72,6 +69,14 @@ class _SearchScreenState extends State<SearchScreen> {
       await _closeLoadingDialogWithDelay();
       if (!mounted) {
         return;
+      }
+      final hasAnyResult = response.similar.isNotEmpty || response.reverse.isNotEmpty || response.opposite.isNotEmpty;
+      if (!hasAnyResult) {
+        await _showSearchNotFoundDialog();
+        return;
+      }
+      if (rawInput.isNotEmpty) {
+        _recordSearchHistory(rawInput);
       }
       await Navigator.of(context).push(
         PageRouteBuilder<void>(
@@ -111,9 +116,7 @@ class _SearchScreenState extends State<SearchScreen> {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('추천 결과를 불러오지 못했습니다: $e')),
-      );
+      await _showSearchNotFoundDialog();
     }
   }
 
@@ -147,6 +150,24 @@ class _SearchScreenState extends State<SearchScreen> {
         _searchHistory.removeRange(_maxHistoryCount, _searchHistory.length);
       }
     });
+  }
+
+  Future<void> _showSearchNotFoundDialog() async {
+    return showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('검색 실패'),
+          content: const Text('음악을 찾을 수 없어요. 다시 입력해주세요.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
