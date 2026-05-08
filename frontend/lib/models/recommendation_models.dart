@@ -1,18 +1,15 @@
 class RecommendRequest {
   const RecommendRequest({
-    required this.trackName,
-    required this.artist,
+    required this.query,
     this.topN = 10,
   });
 
-  final String trackName;
-  final String artist;
+  final String query;
   final int topN;
 
   Map<String, dynamic> toJson() {
     return {
-      'track_name': trackName,
-      'artist': artist,
+      'query': query,
       'top_n': topN,
     };
   }
