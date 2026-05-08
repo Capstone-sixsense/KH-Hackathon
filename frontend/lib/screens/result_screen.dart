@@ -225,6 +225,7 @@ class _ResultScreenState extends State<ResultScreen>
                                   child: _GroupNode(
                                     node: node,
                                     size: nodeSize,
+                                    enabled: node.tracks.isNotEmpty,
                                     onTap: () =>
                                         _openGroupTracks(context, node),
                                   ),
@@ -499,11 +500,13 @@ class _GroupNode extends StatefulWidget {
   const _GroupNode({
     required this.node,
     required this.size,
+    required this.enabled,
     required this.onTap,
   });
 
   final _NodeData node;
   final double size;
+  final bool enabled;
   final VoidCallback onTap;
 
   @override
@@ -522,17 +525,28 @@ class _GroupNodeState extends State<_GroupNode> {
       horizontal: widget.size * 0.052,
       vertical: widget.size * 0.025,
     );
+    final canTap = widget.enabled;
     return MouseRegion(
-      onEnter: (_) => setState(() => _hovered = true),
+      onEnter: (_) {
+        if (!canTap) {
+          return;
+        }
+        setState(() => _hovered = true);
+      },
       onExit: (_) => setState(() => _hovered = false),
-      cursor: SystemMouseCursors.click,
+      cursor: canTap
+          ? SystemMouseCursors.click
+          : SystemMouseCursors.basic,
       child: GestureDetector(
-        onTap: widget.onTap,
+        onTap: canTap ? widget.onTap : null,
         child: AnimatedScale(
-          scale: _hovered ? 1.06 : 1.0,
+          scale: canTap && _hovered ? 1.06 : 1.0,
           duration: const Duration(milliseconds: 170),
           curve: Curves.easeOut,
-          child: SizedBox(
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 200),
+            opacity: canTap ? 1 : 0.5,
+            child: SizedBox(
             width: widget.size,
             height: widget.size,
             child: Stack(
@@ -547,16 +561,16 @@ class _GroupNodeState extends State<_GroupNode> {
                     color: const Color(0xFF15151D).withValues(alpha: 0.92),
                     border: Border.all(
                       color: widget.node.color.withValues(
-                        alpha: _hovered ? 0.95 : 0.7,
+                        alpha: canTap && _hovered ? 0.95 : 0.7,
                       ),
                       width: 1.4,
                     ),
                     boxShadow: [
                       BoxShadow(
                         color: widget.node.color.withValues(
-                          alpha: _hovered ? 0.32 : 0.18,
+                          alpha: canTap && _hovered ? 0.32 : 0.18,
                         ),
-                        blurRadius: _hovered ? 22 : 16,
+                        blurRadius: canTap && _hovered ? 22 : 16,
                         offset: const Offset(0, 8),
                       ),
                     ],
@@ -658,6 +672,7 @@ class _GroupNodeState extends State<_GroupNode> {
                 ),
               ],
             ),
+          ),
           ),
         ),
       ),

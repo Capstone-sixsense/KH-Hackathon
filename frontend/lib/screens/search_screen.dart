@@ -17,6 +17,9 @@ class SearchScreen extends StatefulWidget {
 class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _controller = TextEditingController();
   final RecommendationApi _api = RecommendationApi();
+  final GlobalKey<_VinylLoadingDialogState> _vinylLoadingKey =
+      GlobalKey<_VinylLoadingDialogState>();
+  bool _isSearching = false;
   static const Duration _dialogCloseDelay = Duration(milliseconds: 220);
   static const int _maxHistoryCount = 8;
   static const List<Color> _historyPastelColors = [
@@ -55,29 +58,43 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Future<void> _startMockSearch() async {
+    if (_isSearching) {
+      return;
+    }
     final rawInput = _controller.text.trim();
     final keyword = rawInput.isEmpty ? '너랑 나, IU' : rawInput;
     final query = _buildQuery(keyword);
+    setState(() => _isSearching = true);
     showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const VinylLoadingDialog(),
+      builder: (_) => VinylLoadingDialog(key: _vinylLoadingKey),
     );
     try {
       final response = await _api.recommend(RecommendRequest(query: query));
       if (!mounted) {
         return;
       }
-      await _closeLoadingDialogWithDelay();
-      if (!mounted) {
-        return;
-      }
       final hasAnyResult =
           response.similar.isNotEmpty ||
           response.reverse.isNotEmpty ||
-          response.opposite.isNotEmpty;
+          response.opposite.isNotEmpty ||
+          response.hidden.isNotEmpty;
       if (!hasAnyResult) {
+        await _awaitVinylFailureAnimationOrFallback();
+        if (!mounted) {
+          return;
+        }
+        Navigator.of(context, rootNavigator: true).pop();
+        await Future<void>.delayed(_dialogCloseDelay);
+        if (!mounted) {
+          return;
+        }
         await _showSearchNotFoundDialog();
+        return;
+      }
+      await _closeLoadingDialogWithDelay();
+      if (!mounted) {
         return;
       }
       if (rawInput.isNotEmpty) {
@@ -113,11 +130,29 @@ class _SearchScreenState extends State<SearchScreen> {
       if (!mounted) {
         return;
       }
-      await _closeLoadingDialogWithDelay();
+      await _awaitVinylFailureAnimationOrFallback();
+      if (!mounted) {
+        return;
+      }
+      Navigator.of(context, rootNavigator: true).pop();
+      await Future<void>.delayed(_dialogCloseDelay);
       if (!mounted) {
         return;
       }
       await _showSearchNotFoundDialog();
+    } finally {
+      if (mounted) {
+        setState(() => _isSearching = false);
+      }
+    }
+  }
+
+  Future<void> _awaitVinylFailureAnimationOrFallback() async {
+    final vinyl = _vinylLoadingKey.currentState;
+    if (vinyl != null) {
+      await vinyl.playFailureSequence();
+    } else {
+      await Future<void>.delayed(const Duration(milliseconds: 600));
     }
   }
 
@@ -331,8 +366,10 @@ class _SearchScreenState extends State<SearchScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   child: TextField(
                     controller: _controller,
+                    readOnly: _isSearching,
                     textInputAction: TextInputAction.search,
-                    onSubmitted: (_) => _startMockSearch(),
+                    onSubmitted:
+                        _isSearching ? null : (_) => _startMockSearch(),
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       color: Color(0xFFF4F4F5),
@@ -364,7 +401,7 @@ class _SearchScreenState extends State<SearchScreen> {
               SizedBox(
                 width: math.min(contentWidth * 0.62, 220),
                 child: FilledButton(
-                  onPressed: _startMockSearch,
+                  onPressed: _isSearching ? null : _startMockSearch,
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFF0F766E),
                     foregroundColor: Colors.white,
@@ -438,6 +475,7 @@ class _SearchScreenState extends State<SearchScreen> {
           width: noteWidth,
           color: _historyPastelColors[index % _historyPastelColors.length],
           angle: angles[index % angles.length],
+          enabled: !_isSearching,
           onTap: () => setState(() => _appendKeyword(notes[index])),
         ),
       );
@@ -451,6 +489,7 @@ class _HistoryPostIt extends StatelessWidget {
     required this.width,
     required this.color,
     required this.angle,
+    required this.enabled,
     required this.onTap,
   });
 
@@ -458,6 +497,7 @@ class _HistoryPostIt extends StatelessWidget {
   final double width;
   final Color color;
   final double angle;
+  final bool enabled;
   final VoidCallback onTap;
 
   @override
@@ -465,57 +505,61 @@ class _HistoryPostIt extends StatelessWidget {
     return Transform.rotate(
       angle: angle,
       child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: width,
-          constraints: const BoxConstraints(minHeight: 46),
-          padding: const EdgeInsets.fromLTRB(16, 11, 14, 10),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.9),
-            borderRadius: BorderRadius.circular(5),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.52),
-              width: 1,
-            ),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x66000000),
-                blurRadius: 12,
-                offset: Offset(0, 7),
+        onTap: enabled ? onTap : null,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 200),
+          opacity: enabled ? 1 : 0.45,
+          child: Container(
+            width: width,
+            constraints: const BoxConstraints(minHeight: 46),
+            padding: const EdgeInsets.fromLTRB(16, 11, 14, 10),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.9),
+              borderRadius: BorderRadius.circular(5),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.52),
+                width: 1,
               ),
-            ],
-          ),
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Positioned(
-                left: width * 0.32,
-                top: -19,
-                child: Transform.rotate(
-                  angle: -angle * 0.65,
-                  child: Container(
-                    width: width * 0.34,
-                    height: 16,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFDE68A).withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(3),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x66000000),
+                  blurRadius: 12,
+                  offset: Offset(0, 7),
+                ),
+              ],
+            ),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Positioned(
+                  left: width * 0.32,
+                  top: -19,
+                  child: Transform.rotate(
+                    angle: -angle * 0.65,
+                    child: Container(
+                      width: width * 0.34,
+                      height: 16,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFDE68A).withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
                     ),
                   ),
                 ),
-              ),
-              Text(
-                text,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF1F2937),
-                  fontFamily: 'OK_Mallang_Font',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0,
+                Text(
+                  text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF1F2937),
+                    fontFamily: 'OK_Mallang_Font',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -594,15 +638,30 @@ class VinylLoadingDialog extends StatefulWidget {
 class _VinylLoadingDialogState extends State<VinylLoadingDialog>
     with TickerProviderStateMixin {
   late final AnimationController _discController;
+  late final AnimationController _failureController;
+  late final Animation<double> _failureScale;
   Timer? _lineTimer;
   int _lineIndex = 0;
+  bool _failure = false;
 
   static const _lines = [
-    '스포티파이 탐색 중...',
+    '음악 탐색 중...',
     '당신의 취향 바깥을 여행하는 중...',
     '숨겨진 트랙을 찾고 있어요...',
     'Side-B 감성 매칭 중...',
   ];
+
+  /// 탐색 실패 시 디스크 정지 + X 표시 애니메이션 후 종료 대기.
+  Future<void> playFailureSequence() async {
+    if (!mounted || _failure) {
+      return;
+    }
+    _lineTimer?.cancel();
+    _discController.stop();
+    setState(() => _failure = true);
+    await _failureController.forward(from: 0);
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+  }
 
   @override
   void initState() {
@@ -612,8 +671,17 @@ class _VinylLoadingDialogState extends State<VinylLoadingDialog>
       duration: const Duration(milliseconds: 1700),
     )..repeat();
 
+    _failureController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 520),
+    );
+    _failureScale = CurvedAnimation(
+      parent: _failureController,
+      curve: Curves.elasticOut,
+    );
+
     _lineTimer = Timer.periodic(const Duration(seconds: 2), (_) {
-      if (!mounted) {
+      if (!mounted || _failure) {
         return;
       }
       setState(() {
@@ -626,6 +694,7 @@ class _VinylLoadingDialogState extends State<VinylLoadingDialog>
   void dispose() {
     _lineTimer?.cancel();
     _discController.dispose();
+    _failureController.dispose();
     super.dispose();
   }
 
@@ -634,139 +703,189 @@ class _VinylLoadingDialogState extends State<VinylLoadingDialog>
     return Dialog(
       backgroundColor: const Color(0xFF111119),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: 120,
-              height: 120,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  AnimatedBuilder(
-                    animation: _discController,
-                    builder: (_, child) {
-                      return Transform.rotate(
-                        angle: _discController.value * 2 * math.pi,
-                        child: child,
-                      );
-                    },
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Container(
-                          width: 100,
-                          height: 100,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: const RadialGradient(
-                              colors: [Color(0xFF34343A), Color(0xFF0D0D12)],
-                              stops: [0.25, 1],
-                            ),
-                            border: Border.all(
-                              color: const Color(
-                                0xFF4B5563,
-                              ).withValues(alpha: 0.3),
-                              width: 1,
-                            ),
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Color(0x66000000),
-                                blurRadius: 12,
-                                offset: Offset(0, 6),
+      child: AbsorbPointer(
+        absorbing: _failure,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 120,
+                height: 120,
+                child: Stack(
+                  alignment: Alignment.center,
+                  clipBehavior: Clip.none,
+                  children: [
+                    AnimatedBuilder(
+                      animation: _discController,
+                      builder: (_, child) {
+                        return Transform.rotate(
+                          angle: _discController.value * 2 * math.pi,
+                          child: child,
+                        );
+                      },
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Container(
+                            width: 100,
+                            height: 100,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: const RadialGradient(
+                                colors: [Color(0xFF34343A), Color(0xFF0D0D12)],
+                                stops: [0.25, 1],
                               ),
-                            ],
-                          ),
-                        ),
-                        Container(
-                          width: 78,
-                          height: 78,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.09),
-                              width: 2,
+                              border: Border.all(
+                                color: const Color(
+                                  0xFF4B5563,
+                                ).withValues(alpha: 0.3),
+                                width: 1,
+                              ),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x66000000),
+                                  blurRadius: 12,
+                                  offset: Offset(0, 6),
+                                ),
+                              ],
                             ),
                           ),
-                        ),
-                        Container(
-                          width: 52,
-                          height: 52,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.08),
-                              width: 2,
+                          Container(
+                            width: 78,
+                            height: 78,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.09),
+                                width: 2,
+                              ),
                             ),
                           ),
-                        ),
-                        Container(
-                          width: 18,
-                          height: 18,
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Color(0xFF111827),
+                          Container(
+                            width: 52,
+                            height: 52,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.08),
+                                width: 2,
+                              ),
+                            ),
                           ),
-                        ),
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Color(0xFF2DD4BF),
+                          Container(
+                            width: 18,
+                            height: 18,
+                            decoration: const BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Color(0xFF111827),
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Positioned(
-                    right: 0,
-                    top: 4,
-                    child: TurntableTonearm(
-                      size: 82,
-                      accent: const Color(0xFFF472B6),
-                      opacity: 0.95,
-                      rotation: -0.18,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 16),
-            SizedBox(
-              width: 240,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '분석 중',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 12),
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
-                    child: Text(
-                      _lines[_lineIndex],
-                      key: ValueKey(_lineIndex),
-                      style: const TextStyle(
-                        color: Color(0xFFA1A1AA),
-                        height: 1.4,
-                        fontSize: 13,
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Color(0xFF2DD4BF),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  const LinearProgressIndicator(
-                    color: Color(0xFF2DD4BF),
-                    backgroundColor: Color(0xFF27272A),
-                  ),
-                ],
+                    if (_failure)
+                      Positioned.fill(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.black.withValues(alpha: 0.45),
+                          ),
+                          child: Center(
+                            child: ScaleTransition(
+                              scale: _failureScale,
+                              child: Container(
+                                width: 56,
+                                height: 56,
+                                decoration: const BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Color(0xFFDC2626),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Color(0x66000000),
+                                      blurRadius: 12,
+                                      offset: Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(
+                                  Icons.close_rounded,
+                                  color: Colors.white,
+                                  size: 36,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    Positioned(
+                      right: 0,
+                      top: 4,
+                      child: TurntableTonearm(
+                        size: 82,
+                        accent: const Color(0xFFF472B6),
+                        opacity: 0.95,
+                        rotation: -0.18,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+              const SizedBox(width: 16),
+              SizedBox(
+                width: 240,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _failure ? '탐색 실패' : '분석 중',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 260),
+                      child: Text(
+                        _failure
+                            ? '조건에 맞는 곡을 찾지 못했어요.'
+                            : _lines[_lineIndex],
+                        key: ValueKey('${_failure}_$_lineIndex'),
+                        style: const TextStyle(
+                          color: Color(0xFFA1A1AA),
+                          height: 1.4,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (_failure)
+                      const LinearProgressIndicator(
+                        value: 0,
+                        color: Color(0xFFDC2626),
+                        backgroundColor: Color(0xFF27272A),
+                      )
+                    else
+                      const LinearProgressIndicator(
+                        color: Color(0xFF2DD4BF),
+                        backgroundColor: Color(0xFF27272A),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
