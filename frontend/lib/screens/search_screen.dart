@@ -200,7 +200,7 @@ class _VinylLoadingDialogState extends State<VinylLoadingDialog> with TickerProv
 
   static const _lines = [
     '스포티파이 탐색 중...',
-    '당신의 취향 밖을 여행하는 중...',
+    '당신의 취향 바깥을 여행하는 중...',
     '숨겨진 트랙을 찾고 있어요...',
     'Side-B 감성 매칭 중...',
   ];
@@ -390,9 +390,9 @@ class _VinylLoadingDialogState extends State<VinylLoadingDialog> with TickerProv
                 ],
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 16),
             SizedBox(
-              width: 180,
+              width: 240,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -404,7 +404,7 @@ class _VinylLoadingDialogState extends State<VinylLoadingDialog> with TickerProv
                     child: Text(
                       _lines[_lineIndex],
                       key: ValueKey(_lineIndex),
-                      style: const TextStyle(color: Color(0xFFA1A1AA), height: 1.4),
+                      style: const TextStyle(color: Color(0xFFA1A1AA), height: 1.4, fontSize: 13),
                     ),
                   ),
                   const SizedBox(height: 12),
