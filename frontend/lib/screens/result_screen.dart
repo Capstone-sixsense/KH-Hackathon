@@ -123,19 +123,17 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
+                  Stack(
+                    alignment: Alignment.center,
                     children: [
-                      IconButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.arrow_back_ios_new_rounded),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          '"${widget.keyword}" 탐색 결과',
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: IconButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: const Icon(Icons.arrow_back_ios_new_rounded),
                         ),
                       ),
+                      _SearchTagBar(tags: _buildSearchTags(widget.keyword)),
                     ],
                   ),
                   const SizedBox(height: 20),
@@ -164,7 +162,7 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
                                         opacity: _mainCardOpacity,
                                         child: ScaleTransition(
                                           scale: _mainCardScale,
-                                          child: _MainTrackCard(keyword: widget.keyword, track: mainTrack),
+                                          child: _MainTrackCard(track: mainTrack),
                                         ),
                                       ),
                                     ),
@@ -215,6 +213,23 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
     return Curves.easeOutCubic.transform(t);
   }
 
+  List<String> _buildSearchTags(String keyword) {
+    final normalized = keyword.trim();
+    if (normalized.isEmpty) {
+      return const [];
+    }
+    final commaTokens = normalized.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    if (commaTokens.length > 1) {
+      return commaTokens;
+    }
+    final dashTokens = normalized.split('-').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    if (dashTokens.length > 1) {
+      return dashTokens;
+    }
+    final spaceTokens = normalized.split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
+    return spaceTokens;
+  }
+
   Future<void> _openGroupTracks(BuildContext context, _NodeData node) async {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -231,9 +246,7 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
 }
 
 class _MainTrackCard extends StatelessWidget {
-  const _MainTrackCard({required this.keyword, required this.track});
-
-  final String keyword;
+  const _MainTrackCard({required this.track});
   final TrackRecommendation? track;
 
   @override
@@ -271,7 +284,7 @@ class _MainTrackCard extends StatelessWidget {
           Text(track?.name ?? 'No Result', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
           Text(
-            track == null ? 'for "$keyword"' : '${track!.artist} · "$keyword"',
+            track == null ? '추천 결과를 찾지 못했어요' : track!.artist,
             style: const TextStyle(color: Color(0xFFA1A1AA), fontSize: 12),
           ),
           const SizedBox(height: 10),
@@ -301,6 +314,52 @@ class _MainTrackCard extends StatelessWidget {
       ),
       alignment: Alignment.center,
       child: const Icon(Icons.music_note_rounded, size: 48, color: Colors.white),
+    );
+  }
+}
+
+class _SearchTagBar extends StatelessWidget {
+  const _SearchTagBar({required this.tags});
+
+  final List<String> tags;
+
+  @override
+  Widget build(BuildContext context) {
+    final visibleTags = tags.take(6).toList();
+    final hasOverflow = tags.length > 6;
+    final barTags = [...visibleTags, if (hasOverflow) '...'];
+    const pastelColors = [
+      Color(0xFFF6E8E9),
+      Color(0xFFEAF4E2),
+      Color(0xFFE7F3FC),
+      Color(0xFFF0E8FB),
+      Color(0xFFFFF0DC),
+      Color(0xFFEAF7F1),
+      Color(0xFFF1F5F9),
+    ];
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      alignment: WrapAlignment.center,
+      children: List.generate(barTags.length, (index) {
+        final tag = barTags[index];
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            color: pastelColors[index % pastelColors.length].withValues(alpha: 0.62),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            tag,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF1F2937),
+            ),
+          ),
+        );
+      }),
     );
   }
 }
