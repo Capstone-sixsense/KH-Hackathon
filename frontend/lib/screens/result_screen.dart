@@ -25,7 +25,7 @@ class ResultScreen extends StatelessWidget {
         description: '반대 감성 기반 추천',
         score: response.reverse.length.toDouble(),
         anchor: const Offset(0.18, 0.20),
-        color: const Color(0xFFF472B6),
+        color: const Color(0xFFD38FB4),
         tracks: response.reverse,
       ),
       _NodeData(
@@ -33,7 +33,7 @@ class ResultScreen extends StatelessWidget {
         description: '비슷한 청취 패턴 추천',
         score: response.similar.length.toDouble(),
         anchor: const Offset(0.84, 0.34),
-        color: const Color(0xFF2DD4BF),
+        color: const Color(0xFF7CBFB3),
         tracks: response.similar,
       ),
       _NodeData(
@@ -41,7 +41,7 @@ class ResultScreen extends StatelessWidget {
         description: '감성 반대편 탐색',
         score: response.opposite.length.toDouble(),
         anchor: const Offset(0.72, 0.78),
-        color: const Color(0xFF64748B),
+        color: const Color(0xFF8A95A6),
         tracks: response.opposite,
       ),
       _NodeData(
@@ -49,7 +49,7 @@ class ResultScreen extends StatelessWidget {
         description: '전체 풀 확장 탐색',
         score: allTracks.length.toDouble(),
         anchor: const Offset(0.28, 0.78),
-        color: const Color(0xFF60A5FA),
+        color: const Color(0xFF83A8D6),
         tracks: allTracks,
       ),
     ];
@@ -186,11 +186,6 @@ class _MainTrackCard extends StatelessWidget {
             track == null ? 'for "$keyword"' : '${track!.artist} · "$keyword"',
             style: const TextStyle(color: Color(0xFFA1A1AA), fontSize: 12),
           ),
-          const SizedBox(height: 8),
-          Text(
-            '점수 ${(track?.reverseScore ?? track?.matchScore ?? 0).toStringAsFixed(2)}',
-            style: const TextStyle(color: Color(0xFF2DD4BF), fontWeight: FontWeight.w600),
-          ),
           const SizedBox(height: 10),
           SizedBox(
             width: double.infinity,
@@ -321,11 +316,20 @@ class _GraphEdgePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     for (final node in nodes) {
       final end = Offset(size.width * node.anchor.dx, size.height * node.anchor.dy);
+      final isLeft = end.dx < center.dx;
+      final control = Offset(
+        (center.dx + end.dx) / 2 + (isLeft ? -34 : 34),
+        (center.dy + end.dy) / 2 - 24,
+      );
+      final path = Path()
+        ..moveTo(center.dx, center.dy)
+        ..quadraticBezierTo(control.dx, control.dy, end.dx, end.dy);
       final paint = Paint()
-        ..color = node.color.withValues(alpha: 0.45)
-        ..strokeWidth = 1.4 + (node.score * 2.4)
-        ..style = PaintingStyle.stroke;
-      canvas.drawLine(center, end, paint);
+        ..color = node.color.withValues(alpha: 0.24)
+        ..strokeWidth = 0.8 + (node.score * 1.5)
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round;
+      canvas.drawPath(path, paint);
     }
   }
 
@@ -480,14 +484,16 @@ class _GroupTracksScreenState extends State<_GroupTracksScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _ViewModeToggleChip(
-                    label: '갤러리',
+                    icon: Icons.grid_view_rounded,
+                    tooltip: '갤러리',
                     selected: _mode == _TrackViewMode.gallery,
                     color: widget.color,
                     onTap: () => setState(() => _mode = _TrackViewMode.gallery),
                   ),
                   const SizedBox(width: 6),
                   _ViewModeToggleChip(
-                    label: '리스트',
+                    icon: Icons.format_list_bulleted_rounded,
+                    tooltip: '리스트',
                     selected: _mode == _TrackViewMode.list,
                     color: widget.color,
                     onTap: () => setState(() => _mode = _TrackViewMode.list),
@@ -540,7 +546,6 @@ class _TrackGalleryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final score = (track.reverseScore ?? track.matchScore ?? 0).toStringAsFixed(2);
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF171721),
@@ -562,8 +567,6 @@ class _TrackGalleryCard extends StatelessWidget {
           Text(track.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
           const SizedBox(height: 2),
           Text(track.artist, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, color: Color(0xFFA1A1AA))),
-          const Spacer(),
-          Text('점수 $score', style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600)),
         ],
       ),
     );
@@ -572,36 +575,38 @@ class _TrackGalleryCard extends StatelessWidget {
 
 class _ViewModeToggleChip extends StatelessWidget {
   const _ViewModeToggleChip({
-    required this.label,
+    required this.icon,
+    required this.tooltip,
     required this.selected,
     required this.color,
     required this.onTap,
   });
 
-  final String label;
+  final IconData icon;
+  final String tooltip;
   final bool selected;
   final Color color;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(999),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(999),
-          color: selected ? color.withValues(alpha: 0.22) : Colors.transparent,
-          border: Border.all(
-            color: selected ? color.withValues(alpha: 0.72) : Colors.white.withValues(alpha: 0.1),
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            color: selected ? color.withValues(alpha: 0.22) : Colors.transparent,
+            border: Border.all(
+              color: selected ? color.withValues(alpha: 0.72) : Colors.white.withValues(alpha: 0.1),
+            ),
           ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
+          child: Icon(
+            icon,
+            size: 18,
             color: selected ? color : const Color(0xFFD4D4D8),
           ),
         ),
@@ -618,7 +623,6 @@ class _TrackListTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final score = (track.reverseScore ?? track.matchScore ?? 0).toStringAsFixed(2);
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF171721),
@@ -635,7 +639,6 @@ class _TrackListTile extends StatelessWidget {
         ),
         title: Text(track.name, maxLines: 1, overflow: TextOverflow.ellipsis),
         subtitle: Text(track.artist, maxLines: 1, overflow: TextOverflow.ellipsis),
-        trailing: Text('점수 $score', style: TextStyle(color: color, fontWeight: FontWeight.w700)),
       ),
     );
   }
