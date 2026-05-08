@@ -19,6 +19,7 @@ import logging
 import math
 import random
 import re
+import time
 from dataclasses import dataclass, field
 
 import pylast
@@ -26,6 +27,8 @@ import spotipy
 
 logger = logging.getLogger(__name__)
 
+# 동시에 진행할 Spotify 개별 트랙 검색 수를 제한해 429 rate limit 방지
+_SP_SEMAPHORE = asyncio.Semaphore(15)
 
 GENERIC_SCORING_TAGS = {"k-pop", "korean", "pop", "seen live", "japanese", "j-pop"}
 TAG_BLACKLIST_PATTERNS = [
@@ -97,15 +100,25 @@ def _is_blacklisted_tag(tag: str, artist: str) -> bool:
     return any(re.search(pattern, normalized) for pattern in TAG_BLACKLIST_PATTERNS)
 
 def _sp_search(sp: spotipy.Spotify, track_name: str, artist: str) -> dict | None:
-    """Spotify에서 트랙을 검색해 첫 번째 결과를 반환."""
+    """Spotify에서 트랙을 검색해 첫 번째 결과를 반환. 429 시 최대 3회 재시도."""
     query = f"track:{track_name} artist:{artist}"
-    try:
-        results = sp.search(q=query, type="track", limit=1)
-        items = results["tracks"]["items"]
-        return items[0] if items else None
-    except Exception as e:
-        logger.warning("Spotify 검색 실패 (%s - %s): %s", track_name, artist, e)
-        return None
+    for attempt in range(3):
+        try:
+            results = sp.search(q=query, type="track", limit=1)
+            items = results["tracks"]["items"]
+            return items[0] if items else None
+        except spotipy.SpotifyException as e:
+            if e.http_status == 429:
+                retry_after = int(getattr(e, "headers", {}).get("Retry-After", 2 * (attempt + 1)))
+                logger.warning("Spotify 429 rate limit — %d초 후 재시도 (%d/3)", retry_after, attempt + 1)
+                time.sleep(retry_after)
+            else:
+                logger.warning("Spotify 검색 실패 (%s - %s): %s", track_name, artist, e)
+                return None
+        except Exception as e:
+            logger.warning("Spotify 검색 실패 (%s - %s): %s", track_name, artist, e)
+            return None
+    return None
 
 async def normalize_input(
     query: str,
@@ -183,7 +196,8 @@ async def _enrich_with_spotify(
     artist_id_by_idx: dict[int, str] = {}
 
     async def _fetch(idx: int, track: TrackInfo) -> TrackInfo:
-        item = await asyncio.to_thread(_sp_search, sp, track.name, track.artist)
+        async with _SP_SEMAPHORE:
+            item = await asyncio.to_thread(_sp_search, sp, track.name, track.artist)
         if item:
             track.spotify_id    = item["id"]
             track.popularity    = item["popularity"]
@@ -390,8 +404,9 @@ async def reverse_top100(
     # pop_max: 유명 아티스트일수록 낮춰서 더 마이너한 트랙만 허용
     #   공식: base + (60 - input_pop) * 0.2  →  clamp [35, 60]
     effective_pop_max      = int(max(35, min(60, pop_max + (60 - input_artist_pop) * 0.2)))
-    # artist_pop_ceiling: 입력 아티스트보다 최소 20점 낮은 아티스트만 허용
-    artist_pop_ceiling     = max(30, input_artist_pop - 20)
+    # artist_pop_ceiling: 입력 아티스트 인기도와 무관하게 최대 50으로 상한
+    #   공식: clamp [25, 50]  — 유명 입력 아티스트라도 ceiling을 과도하게 올리지 않음
+    artist_pop_ceiling     = max(25, min(50, input_artist_pop - 25))
 
     logger.info(
         "[Reverse] 입력 아티스트 popularity=%d → pop_max=%d, artist_pop_ceiling=%d",
@@ -467,6 +482,10 @@ async def reverse_top100(
     )
 
     # ── Step 3. Spotify 인기도 보강 (병렬) ──────────────────────
+    # enrichment 전 match_score 상위 후보로 제한해 불필요한 API 호출 절감
+    pool.sort(key=lambda t: t.match_score or 0, reverse=True)
+    pool = pool[: top_n * 5]
+    logger.info("[Reverse] enrichment 전 풀 제한: %d개", len(pool))
     pool = await _enrich_with_spotify(sp, pool)
 
     # ── Step 4. 필터 — 점진적 완화 (Progressive Relaxation) ────────
@@ -475,23 +494,24 @@ async def reverse_top100(
     # artist_listeners(Last.fm) 필터는 K-pop 과소평가 문제로 제외.
     #
     # 완화 레벨별 증감: (pop_max 증가, artist_pop_ceiling 증가, match 감소)
+    # artist ceiling은 트랙 popularity보다 훨씬 보수적으로 완화한다.
+    # reverse 알고리즘의 핵심 목적(무명 아티스트 발굴)을 지키기 위해
+    # Level 0~2는 artist ceiling을 전혀 건드리지 않고, Level 3~4도 최소한만 올린다.
     _RELAX_STEPS = [
         ( 0,  0,  0.00),   # Level 0: 원래 파라미터
-        ( 5,  5, -0.02),   # Level 1: 소폭 완화
-        (10, 10, -0.05),   # Level 2: 중간 완화
-        (15, 15, -0.08),   # Level 3: 적극 완화
-        (20, 20, -0.10),   # Level 4: 최대 완화
+        ( 5,  0, -0.02),   # Level 1: track pop만 완화
+        (10,  0, -0.05),   # Level 2: track pop만 완화
+        (15,  3, -0.08),   # Level 3: artist ceiling +3
+        (20,  5, -0.10),   # Level 4: artist ceiling +5 (최대)
     ]
 
     before = len(pool)
     filtered: list[TrackInfo] = []
     applied_level = 0
-    # diversity > 0이면 후보 풀을 top_n * 3까지 확보해야 다양성 효과가 유효함
-    relax_target = top_n if diversity <= 0.0 else top_n * 3
 
     for level, (pop_delta, ceil_delta, match_delta) in enumerate(_RELAX_STEPS):
         p_max   = min(70, effective_pop_max    + pop_delta)
-        ceiling = min(85, artist_pop_ceiling   + ceil_delta)
+        ceiling = min(55, artist_pop_ceiling   + ceil_delta)  # 절대 55 초과 불가
         m_thr   = max(0.05, effective_match_threshold + match_delta)
 
         filtered = [
@@ -501,7 +521,7 @@ async def reverse_top100(
             and (t.match_score or 0) >= m_thr
         ]
         applied_level = level
-        if len(filtered) >= relax_target:
+        if len(filtered) >= top_n:
             break
 
     pool = filtered
@@ -527,8 +547,8 @@ async def reverse_top100(
             r_score = 0.5
 
         t.reverse_score = (
-            p_score * 0.4 +
-            a_score * 0.3 +
+            p_score * 0.3 +
+            a_score * 0.4 +
             m_score * 0.2 +
             r_score * 0.1
         )
@@ -705,8 +725,10 @@ async def similar_listening_pattern(
             listeners_norm * w_listeners
         )
 
-    # ── Step 8. 최종 선정 (상위 10개 리스트) ───────────────────────
-    ranked = _diverse_top_n(pool, top_n, diversity=diversity)
+    # ── Step 8. 최종 선정 (아티스트 다양성 보장 후 상위 top_n) ────
+    sorted_pool = sorted(pool, key=lambda t: t.reverse_score or 0, reverse=True)
+    capped_pool = _cap_per_artist(sorted_pool, max_per=1)
+    ranked      = _diverse_top_n(capped_pool, top_n, diversity=diversity)
 
     for t in ranked:
         t.algo        = "similar_listening_pattern"
@@ -798,17 +820,28 @@ OPPOSITE_TAG_MAP: dict[str, str] = {
 
 
 def _find_opposite_tag(tags: list[str]) -> tuple[str, str] | None:
-    """
-    기준 트랙의 태그 리스트에서 매핑 가능한 첫 번째 반대 태그를 반환.
-
-    Returns:
-        (원본_태그, 반대_태그) 튜플 또는 None
-    """
+    """기준 트랙의 태그 리스트에서 매핑 가능한 첫 번째 반대 태그를 반환."""
     for tag in tags:
         normalized = tag.lower().strip()
         if normalized in OPPOSITE_TAG_MAP:
             return normalized, OPPOSITE_TAG_MAP[normalized]
     return None
+
+
+def _find_all_opposite_tags(tags: list[str]) -> list[tuple[str, str]]:
+    """기준 트랙의 태그 리스트에서 매핑 가능한 모든 (원본, 반대) 쌍을 반환.
+    반대 태그 중복은 제거한다 (서로 다른 원본이 같은 반대 태그를 가리킬 수 있음).
+    """
+    seen_opposites: set[str] = set()
+    result: list[tuple[str, str]] = []
+    for tag in tags:
+        normalized = tag.lower().strip()
+        if normalized in OPPOSITE_TAG_MAP:
+            opp = OPPOSITE_TAG_MAP[normalized]
+            if opp not in seen_opposites:
+                seen_opposites.add(opp)
+                result.append((normalized, opp))
+    return result
 
 
 async def opposite_emotion(
@@ -891,36 +924,44 @@ async def opposite_emotion(
 
     logger.info("[OppositeEmotion] 기준 태그: %s", tag_names)
 
-    # ── Step 2. 반대 태그 결정 ───────────────────────────────────
-    mapping = _find_opposite_tag(_specific_first_tags(tag_names, len(tag_names)))
-    if not mapping:
+    # ── Step 2. 반대 태그 결정 (매핑 가능한 전체 쌍) ─────────────
+    # 단일 반대 태그만 사용하면 그 태그를 독점하는 아티스트에 의해
+    # 결과가 오염될 수 있다. 매핑 가능한 모든 반대 태그를 병렬로 수집한다.
+    mappings = _find_all_opposite_tags(_specific_first_tags(tag_names, len(tag_names)))
+    if not mappings:
         logger.warning(
             "[OppositeEmotion] 매핑 가능한 반대 태그 없음. "
             "OPPOSITE_TAG_MAP 에 태그를 추가해주세요. (기준 태그: %s)", tag_names
         )
         return []
 
-    origin_tag, opposite_tag = mapping
+    origin_tags   = [m[0] for m in mappings]
+    opposite_tags = [m[1] for m in mappings]
+    logger.info("[OppositeEmotion] 태그 매핑: %s", mappings)
+
+    # ── Step 3. 반대 태그별 풀 병렬 수집 후 병합 ─────────────────
+    async def fetch_tag_pool(opp_tag: str) -> list[TrackInfo]:
+        try:
+            lf_tag = lastfm.get_tag(opp_tag)
+            raw    = await asyncio.to_thread(lf_tag.get_top_tracks, limit=tag_pool_limit)
+            return _lastfm_tag_tracks_to_trackinfo(raw)
+        except Exception as e:
+            logger.warning("[OppositeEmotion] tag.getTopTracks 실패 (%s): %s", opp_tag, e)
+            return []
+
+    tag_results = await asyncio.gather(*[fetch_tag_pool(opp) for opp in opposite_tags])
+    pool = _deduplicate([t for tracks in tag_results for t in tracks])
+
     logger.info(
-        "[OppositeEmotion] 태그 매핑: '%s' → '%s'", origin_tag, opposite_tag
+        "[OppositeEmotion] 반대 태그 풀: %d개 (%d개 태그 병합)",
+        len(pool), len(opposite_tags),
     )
 
-    # ── Step 3. 반대 태그 풀 수집 ────────────────────────────────
-    try:
-        lf_tag    = lastfm.get_tag(opposite_tag)
-        raw_tracks = await asyncio.to_thread(
-            lf_tag.get_top_tracks, limit=tag_pool_limit
-        )
-        pool = _lastfm_tag_tracks_to_trackinfo(raw_tracks)
-    except Exception as e:
-        logger.warning(
-            "[OppositeEmotion] tag.getTopTracks 실패 (%s): %s", opposite_tag, e
-        )
-        return []
-
-    logger.info("[OppositeEmotion] 반대 태그 풀: %d개", len(pool))
-
     # ── Step 4. Spotify 인기도 보강 (병렬) ──────────────────────
+    # enrichment 전 tag_rank 상위 후보로 제한해 불필요한 API 호출 절감
+    pool.sort(key=lambda t: t.tag_rank or tag_pool_limit)
+    pool = pool[: top_n * 5]
+    logger.info("[OppositeEmotion] enrichment 전 풀 제한: %d개", len(pool))
     pool = list(await _enrich_with_spotify(sp, pool))
 
     # ── Step 5. popularity 필터 ──────────────────────────────────
@@ -939,12 +980,12 @@ async def opposite_emotion(
         return []
 
     # ── Step 6. opposite_score 계산 ──────────────────────────────
-    # tag_rank: 반대 태그 내 순위 (1위에 가까울수록 감성 순도 높음)
-    pool_size     = len(pool)
-    max_pop       = max((t.popularity or 0) for t in pool) or 1
+    # tag_rank를 pool_size로 나누면 병합 후 크기에 따라 값이 달라진다.
+    # tag_pool_limit 기준으로 정규화해야 태그 수에 무관하게 일관된 순위 반영.
+    max_pop = max((t.popularity or 0) for t in pool) or 1
 
     for t in pool:
-        rank_norm = (t.tag_rank or pool_size) / pool_size
+        rank_norm = (t.tag_rank or tag_pool_limit) / tag_pool_limit
         pop_norm  = (t.popularity or 0) / max_pop
 
         t.reverse_score = (
@@ -952,16 +993,21 @@ async def opposite_emotion(
             pop_norm        * w_popularity
         )
 
-    # ── Step 7. 최종 선정 (상위 top_n 리스트) ───────────────────
-    ranked = _diverse_top_n(pool, top_n, diversity=diversity)
+    # ── Step 7. 최종 선정 (아티스트 다양성 보장 후 상위 top_n) ────
+    sorted_pool = sorted(pool, key=lambda t: t.reverse_score or 0, reverse=True)
+    capped_pool = _cap_per_artist(sorted_pool, max_per=1)
+    ranked      = _diverse_top_n(capped_pool, top_n, diversity=diversity)
 
+    primary_origin   = origin_tags[0]
+    primary_opposite = opposite_tags[0]
     for t in ranked:
         t.algo        = "opposite_emotion"
-        t.label       = f"#{origin_tag} 반대: #{opposite_tag} 추천"
-        t.reason_tags = [origin_tag, opposite_tag]
+        t.label       = f"#{primary_origin} 반대: #{primary_opposite} 추천"
+        t.reason_tags = list(dict.fromkeys(origin_tags + opposite_tags))[:4]
 
-    logger.info("[OppositeEmotion] 선정 %d개 ('%s' → '%s'):",
-                len(ranked), origin_tag, opposite_tag)
+    logger.info(
+        "[OppositeEmotion] 선정 %d개 (태그 매핑: %s):", len(ranked), mappings
+    )
     for i, t in enumerate(ranked, 1):
         logger.info(
             "  %d. %s - %s (popularity=%s, opposite_score=%.3f)",
@@ -980,17 +1026,24 @@ async def hidden_discovery(
     sp: spotipy.Spotify,
     lastfm: pylast.LastFMNetwork,
     *,
-    artist_limit: int = 10,
-    tracks_per_art: int = 5,
-    pop_min: int = 5,
-    pop_max: int = 35,
-    top_n: int = 10,
-    diversity: float = 0.3,   # 0=결정론적, 높을수록 매 실행 결과 다양
+    artist_limit:   int   = 10,
+    tracks_per_art: int   = 10,
+    pop_min:        int   = 5,
+    pop_max:        int   = 40,
+    top_n:          int   = 10,
+    diversity:      float = 0.3,
 ) -> list[TrackInfo]:
     """
-    유사 아티스트의 곡 중 아티스트 규모 대비 반복 청취율이 높은 곡을 찾는다.
+    아티스트 인기도 대비 잘 알려지지 않은 숨겨진 명곡을 발굴한다.
+    유명 아티스트의 B-side도 발굴 대상에 포함한다.
+
+    점수 계산:
+        hidden_score = hidden_ratio  * 0.5   # 아티스트 대비 트랙 비인지도
+                     + loyalty_norm  * 0.3   # 충성도 log1p 정규화
+                     + artist_pop_norm * 0.2  # 유명 아티스트 보너스
     """
     logger.info("[HiddenDiscovery] 알고리즘 시작: %s - %s", track_name, artist)
+    input_key = (track_name.lower(), artist.lower())
 
     try:
         lf_artist = lastfm.get_artist(artist)
@@ -998,59 +1051,118 @@ async def hidden_discovery(
             lf_artist.get_similar, limit=artist_limit
         )
 
+        # 입력 아티스트 자신 + 유사 아티스트 모두 탐색
+        artist_sources = [lf_artist] + [sa.item for sa in similar_artists]
         tasks = [
-            asyncio.to_thread(sa.item.get_top_tracks, limit=tracks_per_art)
-            for sa in similar_artists
+            asyncio.to_thread(src.get_top_tracks, limit=tracks_per_art)
+            for src in artist_sources
         ]
-        raw_track_results = await asyncio.gather(*tasks)
+        # return_exceptions=True: 한 아티스트 실패가 전체 풀 구성을 중단시키지 않음
+        raw_results = await asyncio.gather(*tasks, return_exceptions=True)
 
         pool = []
-        for track_list in raw_track_results:
-            for item in track_list:
-                pool.append(
-                    TrackInfo(
+        for result in raw_results:
+            if isinstance(result, Exception):
+                logger.warning("[HiddenDiscovery] 아티스트 트랙 수집 실패: %s", result)
+                continue
+            for item in result:
+                try:
+                    pool.append(TrackInfo(
                         name=item.item.get_name(),
                         artist=item.item.get_artist().get_name(),
-                        match_score=0.5,
-                    )
-                )
+                    ))
+                except Exception as e:
+                    logger.debug("[HiddenDiscovery] 트랙 변환 실패: %s", e)
 
         pool = _deduplicate(pool)
-        logger.info("[HiddenDiscovery] 후보 풀 구성 완료: %d개", len(pool))
+        # 입력 트랙 자체는 결과에서 제외
+        pool = [t for t in pool if (t.name.lower(), t.artist.lower()) != input_key]
+        logger.info("[HiddenDiscovery] 후보 풀: %d개 (%d 아티스트 소스)",
+                    len(pool), len(artist_sources))
 
         pool = await _enrich_with_spotify(sp, pool)
-        pool = [
-            t for t in pool
-            if t.popularity is not None and pop_min <= t.popularity <= pop_max
-        ]
 
+        # popularity 필터 — top_n 미만이면 pop_max를 단계적으로 완화
+        _POP_RELAX = (0, 10, 20)
+        filtered: list[TrackInfo] = []
+        effective_pop_max = pop_max
+        for extra in _POP_RELAX:
+            effective_pop_max = pop_max + extra
+            filtered = [
+                t for t in pool
+                if t.popularity is not None and pop_min <= t.popularity <= effective_pop_max
+            ]
+            if len(filtered) >= top_n:
+                break
+
+        pool = filtered
+        logger.info("[HiddenDiscovery] popularity 필터 후: %d개 (pop_max=%d)",
+                    len(pool), effective_pop_max)
+
+        if not pool:
+            logger.warning("[HiddenDiscovery] 필터 후 후보 없음.")
+            return []
+
+        # Last.fm 청취 지표 수집
         async def fetch_metrics(track: TrackInfo) -> TrackInfo | None:
             try:
                 track_obj = lastfm.get_track(track.artist, track.name)
-                artist_obj = lastfm.get_artist(track.artist)
-
-                listeners, playcount, artist_listeners = await asyncio.gather(
+                listeners, playcount = await asyncio.gather(
                     asyncio.to_thread(track_obj.get_listener_count),
                     asyncio.to_thread(track_obj.get_playcount),
-                    asyncio.to_thread(artist_obj.get_listener_count),
                 )
-
-                rarity = 1 / math.log10(max(int(artist_listeners), 10))
-                loyalty = int(playcount) / max(int(listeners), 1)
-                track.reverse_score = rarity * loyalty * (track.match_score or 1)
+                # 충성도 raw값 임시 저장 — 아래에서 log1p 정규화
+                track.match_score = int(playcount) / max(int(listeners), 1)
                 return track
-            except Exception:
+            except Exception as e:
+                logger.debug("[HiddenDiscovery] 메트릭 수집 실패 (%s - %s): %s",
+                             track.artist, track.name, e)
                 return None
 
         metric_results = await asyncio.gather(*[fetch_metrics(t) for t in pool])
         pool = [t for t in metric_results if t is not None]
-        ranked = _diverse_top_n(pool, top_n, diversity=diversity)
+
+        if not pool:
+            logger.warning("[HiddenDiscovery] 메트릭 수집 후 후보 없음.")
+            return []
+
+        # 충성도 log1p 정규화 — 극단적 이상치(playcount 폭발) 완화
+        log_loyalties = [math.log1p(t.match_score or 0) for t in pool]
+        max_log = max(log_loyalties) or 1.0
+
+        for t, log_loyalty in zip(pool, log_loyalties):
+            loyalty_norm = log_loyalty / max_log
+            track_pop    = t.popularity or 0
+            # artist_pop이 None이면 언더그라운드 중간값(30)으로 대체
+            # → or 0 사용 시 track_pop≥10이면 hidden_ratio=0이 되는 왜곡 방지
+            artist_pop   = t.artist_spotify_popularity if t.artist_spotify_popularity is not None else 30
+
+            # 아티스트 인기도 대비 트랙 비인지도 — 유명 아티스트의 B-side일수록 높음
+            hidden_ratio = max(0.0, 1.0 - track_pop / max(artist_pop, 10))
+            artist_norm  = artist_pop / 100
+
+            t.reverse_score = (
+                hidden_ratio * 0.5
+                + loyalty_norm  * 0.3
+                + artist_norm   * 0.2
+            )
+
+        # 아티스트당 최대 2곡 (유명 아티스트 허용하되 독점 방지)
+        sorted_pool = sorted(pool, key=lambda t: t.reverse_score or 0, reverse=True)
+        capped_pool = _cap_per_artist(sorted_pool, max_per=2)
+        ranked      = _diverse_top_n(capped_pool, top_n, diversity=diversity)
 
         for t in ranked:
-            t.algo = "hidden_discovery"
-            t.label = "인지도 대비 높은 충성도의 명곡"
+            t.algo  = "hidden_discovery"
+            t.label = "숨겨진 명곡"
 
         logger.info("[HiddenDiscovery] 최종 선정 %d개 완료", len(ranked))
+        for i, t in enumerate(ranked, 1):
+            logger.info(
+                "  %d. %s - %s (track_pop=%s, artist_pop=%s, hidden_score=%.3f)",
+                i, t.name, t.artist,
+                t.popularity, t.artist_spotify_popularity, t.reverse_score or 0,
+            )
         return ranked
     except Exception as e:
         logger.error("[HiddenDiscovery] 알고리즘 실행 실패: %s", e, exc_info=True)
