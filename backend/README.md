@@ -23,13 +23,13 @@ docker compose up -d --build
 Health check:
 
 ```powershell
-Invoke-RestMethod http://localhost:8001/health
+Invoke-RestMethod http://localhost:8000/health
 ```
 
 Search:
 
 ```powershell
-Invoke-RestMethod http://localhost:8001/search `
+Invoke-RestMethod http://localhost:8000/search `
   -Method Post `
   -ContentType "application/json" `
   -Body '{"query":"아이유의 너랑나"}'

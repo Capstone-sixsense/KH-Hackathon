@@ -16,6 +16,7 @@ recommend_algo.py
 
 import asyncio
 import logging
+import math
 import re
 from dataclasses import dataclass, field
 
@@ -106,13 +107,10 @@ def _sp_search(sp: spotipy.Spotify, track_name: str, artist: str) -> dict | None
 async def normalize_input(
     query: str,
     sp: spotipy.Spotify,
-    lastfm: pylast.LastFMNetwork,   # lastfm 추가
-    search_limit: int = 5,          # 후보 여러 개 시도
+    lastfm: pylast.LastFMNetwork,
+    search_limit: int = 5,
 ) -> tuple[str, str, str] | tuple[None, None, None]:
-    """
-    Spotify 검색 후보 중 Last.fm 데이터가 실제로 존재하는
-    첫 번째 트랙을 반환한다.
-    """
+    """Spotify 후보 중 Last.fm 유사 트랙 데이터가 있는 첫 번째 트랙을 반환한다."""
     try:
         results = await asyncio.to_thread(
             sp.search, q=query, type="track", limit=search_limit
@@ -151,7 +149,6 @@ async def normalize_input(
         logger.error("[Normalize] Spotify 검색 실패: %s", e)
 
     return None, None, None
-
 
 async def _enrich_with_spotify(
     sp: spotipy.Spotify,
@@ -797,3 +794,89 @@ async def opposite_emotion(
             i, t.name, t.artist, t.popularity, t.reverse_score or 0,
         )
     return ranked
+
+
+# ════════════════════════════════════════════════════════════════
+# Hidden Discovery 알고리즘
+# ════════════════════════════════════════════════════════════════
+
+async def hidden_discovery(
+    track_name: str,
+    artist: str,
+    sp: spotipy.Spotify,
+    lastfm: pylast.LastFMNetwork,
+    *,
+    artist_limit: int = 10,
+    tracks_per_art: int = 5,
+    pop_min: int = 5,
+    pop_max: int = 35,
+    top_n: int = 10,
+) -> list[TrackInfo]:
+    """
+    유사 아티스트의 곡 중 아티스트 규모 대비 반복 청취율이 높은 곡을 찾는다.
+    """
+    logger.info("[HiddenDiscovery] 알고리즘 시작: %s - %s", track_name, artist)
+
+    try:
+        lf_artist = lastfm.get_artist(artist)
+        similar_artists = await asyncio.to_thread(
+            lf_artist.get_similar, limit=artist_limit
+        )
+
+        tasks = [
+            asyncio.to_thread(sa.item.get_top_tracks, limit=tracks_per_art)
+            for sa in similar_artists
+        ]
+        raw_track_results = await asyncio.gather(*tasks)
+
+        pool = []
+        for track_list in raw_track_results:
+            for item in track_list:
+                pool.append(
+                    TrackInfo(
+                        name=item.item.get_name(),
+                        artist=item.item.get_artist().get_name(),
+                        match_score=0.5,
+                    )
+                )
+
+        pool = _deduplicate(pool)
+        logger.info("[HiddenDiscovery] 후보 풀 구성 완료: %d개", len(pool))
+
+        pool = await _enrich_with_spotify(sp, pool)
+        pool = [
+            t for t in pool
+            if t.popularity is not None and pop_min <= t.popularity <= pop_max
+        ]
+
+        async def fetch_metrics(track: TrackInfo) -> TrackInfo | None:
+            try:
+                track_obj = lastfm.get_track(track.artist, track.name)
+                artist_obj = lastfm.get_artist(track.artist)
+
+                listeners, playcount, artist_listeners = await asyncio.gather(
+                    asyncio.to_thread(track_obj.get_listener_count),
+                    asyncio.to_thread(track_obj.get_playcount),
+                    asyncio.to_thread(artist_obj.get_listener_count),
+                )
+
+                rarity = 1 / math.log10(max(int(artist_listeners), 10))
+                loyalty = int(playcount) / max(int(listeners), 1)
+                track.reverse_score = rarity * loyalty * (track.match_score or 1)
+                return track
+            except Exception:
+                return None
+
+        metric_results = await asyncio.gather(*[fetch_metrics(t) for t in pool])
+        pool = [t for t in metric_results if t is not None]
+        ranked = sorted(pool, key=lambda t: t.reverse_score or 0, reverse=True)[:top_n]
+
+        for t in ranked:
+            t.algo = "hidden_discovery"
+            t.label = "인지도 대비 높은 충성도의 명곡"
+
+        logger.info("[HiddenDiscovery] 최종 선정 %d개 완료", len(ranked))
+        return ranked
+    except Exception as e:
+        logger.error("[HiddenDiscovery] 알고리즘 실행 실패: %s", e, exc_info=True)
+        return []

@@ -1,6 +1,9 @@
 import asyncio
+import importlib.util
 import logging
+import sys
 from dataclasses import asdict
+from pathlib import Path
 
 import pylast
 import requests
@@ -12,16 +15,45 @@ from requests.adapters import HTTPAdapter
 from spotipy.oauth2 import SpotifyClientCredentials
 from urllib3.util.retry import Retry
 
-from recommend_algo import opposite_emotion, reverse_top100, similar_listening_pattern
-
 logger = logging.getLogger(__name__)
+
+_RECOMMEND_ALGO_PATH = Path(__file__).resolve().parents[2] / "recommend_algo.py"
+
+
+def _module_file_matches(module: object, path: Path) -> bool:
+    module_file = getattr(module, "__file__", None)
+    if not module_file:
+        return False
+    return Path(module_file).resolve() == path
+
+
+def _load_recommend_algo():
+    existing = sys.modules.get("recommend_algo")
+    if existing and _module_file_matches(existing, _RECOMMEND_ALGO_PATH):
+        return existing
+
+    spec = importlib.util.spec_from_file_location("recommend_algo", _RECOMMEND_ALGO_PATH)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot load recommend_algo from {_RECOMMEND_ALGO_PATH}")
+
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["recommend_algo"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+recommend_algo = _load_recommend_algo()
+hidden_discovery = recommend_algo.hidden_discovery
+normalize_input = recommend_algo.normalize_input
+opposite_emotion = recommend_algo.opposite_emotion
+reverse_top100 = recommend_algo.reverse_top100
+similar_listening_pattern = recommend_algo.similar_listening_pattern
 
 router = APIRouter()
 
 
 class RecommendRequest(BaseModel):
-    track_name: str = Field(..., min_length=1, max_length=200)
-    artist: str = Field(..., min_length=1, max_length=200)
+    query: str = Field(..., min_length=1, max_length=200)
     top_n: int = Field(default=10, ge=1, le=50)
 
 
@@ -30,6 +62,8 @@ class RecommendResponse(BaseModel):
     artist: str
     top_n: int
     result: dict
+    spotify_id: str | None = None
+    album_art_url: str | None = None
 
 
 @router.post("/recommend", response_model=RecommendResponse)
@@ -42,17 +76,34 @@ async def recommend(req: RecommendRequest, request: Request):
             content={"error": "service_unavailable", "detail": str(exc)},
         )
 
-    logger.info(
-        "추천 요청 수신 - track: '%s', artist: '%s', top_n: %d",
-        req.track_name,
-        req.artist,
-        req.top_n,
-    )
+    logger.info("추천 요청 수신 - query: '%s', top_n: %d", req.query, req.top_n)
+
+    track_name, artist, spotify_id = await normalize_input(req.query, sp, lf)
+    if not track_name or not artist:
+        logger.warning("추천 기준 트랙 검색 결과 없음: %s", req.query)
+        return RecommendResponse(
+            track_name=req.query,
+            artist="Unknown",
+            top_n=req.top_n,
+            spotify_id=None,
+            album_art_url=None,
+            result={"similar": [], "reverse": [], "opposite": [], "hidden": []},
+        )
+
+    album_art_url = None
+    if spotify_id:
+        try:
+            track_info = await asyncio.to_thread(sp.track, spotify_id)
+            images = track_info["album"]["images"]
+            album_art_url = images[0]["url"] if images else None
+        except Exception as exc:
+            logger.warning("기준 트랙 앨범 아트 조회 실패: %s", exc)
 
     raw_results = await asyncio.gather(
-        similar_listening_pattern(req.track_name, req.artist, sp, lf, top_n=req.top_n),
-        reverse_top100(req.track_name, req.artist, sp, lf, top_n=req.top_n),
-        opposite_emotion(req.track_name, req.artist, sp, lf, top_n=req.top_n),
+        similar_listening_pattern(track_name, artist, sp, lf, top_n=req.top_n),
+        reverse_top100(track_name, artist, sp, lf, top_n=req.top_n),
+        opposite_emotion(track_name, artist, sp, lf, top_n=req.top_n),
+        hidden_discovery(track_name, artist, sp, lf, top_n=req.top_n),
         return_exceptions=True,
     )
 
@@ -68,19 +119,22 @@ async def recommend(req: RecommendRequest, request: Request):
         "similar": processed_results[0],
         "reverse": processed_results[1],
         "opposite": processed_results[2],
+        "hidden": processed_results[3],
     }
 
     if not any(payload.values()):
         logger.warning(
             "추천 결과가 모든 알고리즘에서 비어있습니다. 입력: %s - %s",
-            req.track_name,
-            req.artist,
+            track_name,
+            artist,
         )
 
     return RecommendResponse(
-        track_name=req.track_name,
-        artist=req.artist,
+        track_name=track_name,
+        artist=artist,
         top_n=req.top_n,
+        spotify_id=spotify_id,
+        album_art_url=album_art_url,
         result=payload,
     )
 
