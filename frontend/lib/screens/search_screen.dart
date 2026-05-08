@@ -204,7 +204,11 @@ class _SearchScreenState extends State<SearchScreen> {
                                   hintText: '키워드로 음악을 탐색해 보세요',
                                   hintStyle: TextStyle(color: Color(0xFFA1A1AA)),
                                   border: InputBorder.none,
-                                  icon: Icon(Icons.search_rounded, color: Color(0xFF94A3B8)),
+                                  prefixIcon: Icon(Icons.search_rounded, color: Color(0xFF94A3B8)),
+                                  prefixIconConstraints: BoxConstraints(minWidth: 40, minHeight: 40),
+                                  // Keep left/right visual weight balanced for true center alignment.
+                                  suffixIcon: SizedBox(width: 40),
+                                  suffixIconConstraints: BoxConstraints(minWidth: 40, minHeight: 40),
                                 ),
                               ),
                             ),
