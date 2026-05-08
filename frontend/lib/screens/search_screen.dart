@@ -41,7 +41,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Future<void> _startMockSearch() async {
     final keyword = _controller.text.trim().isEmpty ? '너랑 나, IU' : _controller.text.trim();
-    final parsed = _parseInput(keyword);
+    final query = _buildQuery(keyword);
     showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -49,7 +49,7 @@ class _SearchScreenState extends State<SearchScreen> {
     );
     try {
       final response = await _api.recommend(
-        RecommendRequest(trackName: parsed.$1, artist: parsed.$2),
+        RecommendRequest(query: query),
       );
       if (!mounted) {
         return;
@@ -108,16 +108,16 @@ class _SearchScreenState extends State<SearchScreen> {
     await Future<void>.delayed(_dialogCloseDelay);
   }
 
-  (String, String) _parseInput(String keyword) {
+  String _buildQuery(String keyword) {
     final dash = keyword.split('-').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
     if (dash.length >= 2) {
-      return (dash.first, dash[1]);
+      return dash.join(' ');
     }
     final comma = keyword.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
     if (comma.length >= 2) {
-      return (comma.first, comma[1]);
+      return comma.join(' ');
     }
-    return (keyword.trim(), 'IU');
+    return keyword.trim();
   }
 
   @override
