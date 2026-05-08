@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:khuthon/models/recommendation_models.dart';
+import 'package:khuthon/widgets/turntable_tonearm.dart';
 
 enum _TrackViewMode { gallery, list }
 
@@ -174,6 +175,18 @@ class _ResultScreenState extends State<ResultScreen>
                                 nodes: groups,
                                 progress: _edgeProgress.value,
                                 ripple: _introController.value,
+                              ),
+                            ),
+                            Positioned(
+                              left: center.dx + (recordRadius * 0.32),
+                              top: center.dy - (recordRadius * 0.72),
+                              child: IgnorePointer(
+                                child: TurntableTonearm(
+                                  size: recordRadius * 0.46,
+                                  accent: const Color(0xFFD6B986),
+                                  opacity: 0.92,
+                                  rotation: -0.08,
+                                ),
                               ),
                             ),
                             Positioned(

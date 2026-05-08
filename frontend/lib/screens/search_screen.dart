@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:khuthon/models/recommendation_models.dart';
 import 'package:khuthon/screens/result_screen.dart';
 import 'package:khuthon/services/recommendation_api.dart';
+import 'package:khuthon/widgets/turntable_tonearm.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -36,7 +36,11 @@ class _SearchScreenState extends State<SearchScreen> {
       _controller.text = keyword;
       return;
     }
-    final tokens = current.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    final tokens = current
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
     if (tokens.contains(keyword)) {
       return;
     }
@@ -60,9 +64,7 @@ class _SearchScreenState extends State<SearchScreen> {
       builder: (_) => const VinylLoadingDialog(),
     );
     try {
-      final response = await _api.recommend(
-        RecommendRequest(query: query),
-      );
+      final response = await _api.recommend(RecommendRequest(query: query));
       if (!mounted) {
         return;
       }
@@ -70,7 +72,10 @@ class _SearchScreenState extends State<SearchScreen> {
       if (!mounted) {
         return;
       }
-      final hasAnyResult = response.similar.isNotEmpty || response.reverse.isNotEmpty || response.opposite.isNotEmpty;
+      final hasAnyResult =
+          response.similar.isNotEmpty ||
+          response.reverse.isNotEmpty ||
+          response.opposite.isNotEmpty;
       if (!hasAnyResult) {
         await _showSearchNotFoundDialog();
         return;
@@ -85,25 +90,23 @@ class _SearchScreenState extends State<SearchScreen> {
           pageBuilder: (_, animation, secondaryAnimation) =>
               ResultScreen(keyword: keyword, response: response),
           transitionsBuilder: (_, animation, secondaryAnimation, child) {
-            final slideAnimation = Tween<Offset>(
-              begin: const Offset(0.12, 0),
-              end: Offset.zero,
-            ).animate(
-              CurvedAnimation(
-                parent: animation,
-                curve: Curves.easeInOutCubicEmphasized,
-              ),
-            );
+            final slideAnimation =
+                Tween<Offset>(
+                  begin: const Offset(0.12, 0),
+                  end: Offset.zero,
+                ).animate(
+                  CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeInOutCubicEmphasized,
+                  ),
+                );
             final fadeAnimation = CurvedAnimation(
               parent: animation,
               curve: Curves.easeInOutCubicEmphasized,
             );
             return FadeTransition(
               opacity: fadeAnimation,
-              child: SlideTransition(
-                position: slideAnimation,
-                child: child,
-              ),
+              child: SlideTransition(position: slideAnimation, child: child),
             );
           },
         ),
@@ -127,11 +130,19 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   String _buildQuery(String keyword) {
-    final dash = keyword.split('-').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    final dash = keyword
+        .split('-')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
     if (dash.length >= 2) {
       return dash.join(' ');
     }
-    final comma = keyword.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    final comma = keyword
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
     if (comma.length >= 2) {
       return comma.join(' ');
     }
@@ -144,7 +155,9 @@ class _SearchScreenState extends State<SearchScreen> {
       return;
     }
     setState(() {
-      _searchHistory.removeWhere((item) => item.toLowerCase() == normalized.toLowerCase());
+      _searchHistory.removeWhere(
+        (item) => item.toLowerCase() == normalized.toLowerCase(),
+      );
       _searchHistory.insert(0, normalized);
       if (_searchHistory.length > _maxHistoryCount) {
         _searchHistory.removeRange(_maxHistoryCount, _searchHistory.length);
@@ -172,163 +185,414 @@ class _SearchScreenState extends State<SearchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final horizontalInset = math.min(500.0, screenWidth * 0.12);
-    final contentWidth = math.max(320.0, screenWidth - (horizontalInset * 2));
-    final maxContentWidth = math.min(contentWidth, 560.0);
     return Scaffold(
       body: SafeArea(
-        child: Stack(
-          children: [
-            Positioned(
-              left: -100,
-              top: -80,
-              child: _GlowOrb(size: 280, color: const Color(0xFF2DD4BF).withValues(alpha: 0.18)),
-            ),
-            Positioned(
-              right: -120,
-              bottom: -80,
-              child: _GlowOrb(size: 320, color: const Color(0xFF4B5563).withValues(alpha: 0.18)),
-            ),
-            Center(
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: horizontalInset, vertical: 20),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: maxContentWidth),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(28),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 34),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF12121A).withValues(alpha: 0.82),
-                          borderRadius: BorderRadius.circular(28),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-                          boxShadow: const [BoxShadow(color: Color(0x66000000), blurRadius: 28, offset: Offset(0, 14))],
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            ShaderMask(
-                              shaderCallback: (bounds) => const LinearGradient(
-                                colors: [Color(0xFFE5E7EB), Color(0xFF6B7280)],
-                              ).createShader(bounds),
-                              child: const Text(
-                                'Side-B',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 42,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white,
-                                  fontFamily: 'OK_Mallang_Font',
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            const Text(
-                              '메이저 바깥의 음악을 발견하는 탐색기',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: Color(0xFFA1A1AA), fontSize: 14),
-                            ),
-                            const SizedBox(height: 26),
-                            Container(
-                              decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  colors: [Color(0xFF1A1A25), Color(0xFF14141D)],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                ),
-                                borderRadius: BorderRadius.circular(18),
-                                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-                              ),
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              child: TextField(
-                                controller: _controller,
-                                textInputAction: TextInputAction.search,
-                                onSubmitted: (_) => _startMockSearch(),
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(color: Color(0xFFF4F4F5), fontSize: 15),
-                                decoration: const InputDecoration(
-                                  hintText: '키워드로 음악을 탐색해 보세요',
-                                  hintStyle: TextStyle(color: Color(0xFFA1A1AA)),
-                                  border: InputBorder.none,
-                                  prefixIcon: Icon(Icons.search_rounded, color: Color(0xFF94A3B8)),
-                                  prefixIconConstraints: BoxConstraints(minWidth: 40, minHeight: 40),
-                                  // Keep left/right visual weight balanced for true center alignment.
-                                  suffixIcon: SizedBox(width: 40),
-                                  suffixIconConstraints: BoxConstraints(minWidth: 40, minHeight: 40),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            if (_searchHistory.isNotEmpty) ...[
-                              const Align(
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  '최근 검색',
-                                  style: TextStyle(color: Color(0xFFA1A1AA), fontSize: 12, fontWeight: FontWeight.w600),
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Wrap(
-                                alignment: WrapAlignment.center,
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: _searchHistory
-                                    .asMap()
-                                    .entries
-                                    .map(
-                                      (entry) => InkWell(
-                                        borderRadius: BorderRadius.circular(10),
-                                        onTap: () => setState(() => _appendKeyword(entry.value)),
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                                          decoration: BoxDecoration(
-                                            color: _historyPastelColors[entry.key % _historyPastelColors.length].withValues(alpha: 0.62),
-                                            borderRadius: BorderRadius.circular(10),
-                                          ),
-                                          child: Text(
-                                            entry.value,
-                                            style: const TextStyle(
-                                              color: Color(0xFF1F2937),
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w700,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    )
-                                    .toList(),
-                              ),
-                            ],
-                            const SizedBox(height: 26),
-                            SizedBox(
-                              width: math.min(maxContentWidth * 0.52, 220),
-                              child: FilledButton(
-                                onPressed: _startMockSearch,
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: const Color(0xFF0F766E),
-                                  foregroundColor: Colors.white,
-                                  elevation: 0,
-                                  padding: const EdgeInsets.symmetric(vertical: 16),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                                ),
-                                child: const Text('탐색 시작', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                              ),
-                            ),
-                          ],
-                        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final shortest = math.min(
+              constraints.maxWidth,
+              constraints.maxHeight,
+            );
+            final availableRadius = math.min(
+              constraints.maxWidth * 0.48,
+              constraints.maxHeight * 0.44,
+            );
+            final recordRadius = math.min(
+              (shortest * 0.43).clamp(170.0, 430.0).toDouble(),
+              availableRadius,
+            );
+            final labelSize = math
+                .min(
+                  (recordRadius * 1.08).clamp(300.0, 460.0).toDouble(),
+                  math.min(
+                    constraints.maxWidth - 40,
+                    constraints.maxHeight * 0.72,
+                  ),
+                )
+                .toDouble();
+            final center = Offset(
+              constraints.maxWidth * 0.5,
+              constraints.maxHeight * 0.52,
+            );
+
+            return Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Positioned.fill(
+                  child: CustomPaint(
+                    painter: _HomeTurntablePainter(
+                      center: center,
+                      radius: recordRadius,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: center.dx + (recordRadius * 0.31),
+                  top: center.dy - (recordRadius * 0.74),
+                  child: IgnorePointer(
+                    child: TurntableTonearm(
+                      size: recordRadius * 0.62,
+                      accent: const Color(0xFFF472B6),
+                      opacity: 0.94,
+                      rotation: -0.06,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: center.dx - (labelSize / 2),
+                  top: center.dy - (labelSize / 2),
+                  child: _buildHomeRecordLabel(labelSize),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHomeRecordLabel(double labelSize) {
+    final contentWidth = labelSize * 0.75;
+    final compact = labelSize < 340;
+    final titleFontSize = compact ? 34.0 : 42.0;
+    final subtitleFontSize = compact ? 11.5 : 13.0;
+    final verticalGap = compact ? 8.0 : 14.0;
+    return Container(
+      width: labelSize,
+      height: labelSize,
+      padding: EdgeInsets.symmetric(
+        horizontal: labelSize * 0.12,
+        vertical: labelSize * 0.1,
+      ),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: const RadialGradient(
+          colors: [Color(0xFFF4E3BF), Color(0xFFD1AC68), Color(0xFF7B5B2D)],
+          stops: [0, 0.7, 1],
+        ),
+        border: Border.all(
+          color: const Color(0xFFFFF3D2).withValues(alpha: 0.82),
+          width: 2,
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x77000000),
+            blurRadius: 34,
+            offset: Offset(0, 16),
+          ),
+        ],
+      ),
+      child: Center(
+        child: SingleChildScrollView(
+          physics: const NeverScrollableScrollPhysics(),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ShaderMask(
+                shaderCallback: (bounds) => const LinearGradient(
+                  colors: [Color(0xFF2A1D10), Color(0xFF6D4A22)],
+                ).createShader(bounds),
+                child: Text(
+                  'Side-B',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: titleFontSize,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    fontFamily: 'OK_Mallang_Font',
+                  ),
+                ),
+              ),
+              SizedBox(height: compact ? 4 : 8),
+              Text(
+                '메이저 바깥의 음악을 발견하는 탐색기',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: const Color(0xFF4B371C),
+                  fontSize: subtitleFontSize,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              SizedBox(height: compact ? 10 : labelSize * 0.052),
+              SizedBox(
+                width: contentWidth,
+                height: compact ? 44 : null,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF15151D).withValues(alpha: 0.92),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.14),
+                    ),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  child: TextField(
+                    controller: _controller,
+                    textInputAction: TextInputAction.search,
+                    onSubmitted: (_) => _startMockSearch(),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Color(0xFFF4F4F5),
+                      fontSize: 15,
+                    ),
+                    decoration: const InputDecoration(
+                      hintText: '키워드로 음악을 탐색해 보세요',
+                      hintStyle: TextStyle(color: Color(0xFFA1A1AA)),
+                      border: InputBorder.none,
+                      prefixIcon: Icon(
+                        Icons.search_rounded,
+                        color: Color(0xFF94A3B8),
+                      ),
+                      prefixIconConstraints: BoxConstraints(
+                        minWidth: 40,
+                        minHeight: 40,
+                      ),
+                      suffixIcon: SizedBox(width: 40),
+                      suffixIconConstraints: BoxConstraints(
+                        minWidth: 40,
+                        minHeight: 40,
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ],
+              SizedBox(height: verticalGap),
+              if (_searchHistory.isNotEmpty) ...[
+                SizedBox(
+                  width: contentWidth,
+                  child: const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      '최근 검색',
+                      style: TextStyle(
+                        color: Color(0xFF6A4B24),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: contentWidth,
+                  child: Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _searchHistory
+                        .take(compact ? 4 : _searchHistory.length)
+                        .toList()
+                        .asMap()
+                        .entries
+                        .map(
+                          (entry) => InkWell(
+                            borderRadius: BorderRadius.circular(10),
+                            onTap: () =>
+                                setState(() => _appendKeyword(entry.value)),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 7,
+                              ),
+                              decoration: BoxDecoration(
+                                color:
+                                    _historyPastelColors[entry.key %
+                                            _historyPastelColors.length]
+                                        .withValues(alpha: 0.72),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                entry.value,
+                                style: const TextStyle(
+                                  color: Color(0xFF1F2937),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+                SizedBox(height: verticalGap),
+              ] else
+                SizedBox(height: compact ? 8 : labelSize * 0.04),
+              SizedBox(
+                width: math.min(contentWidth * 0.62, 220),
+                child: FilledButton(
+                  onPressed: _startMockSearch,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF0F766E),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: EdgeInsets.symmetric(vertical: compact ? 12 : 15),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: const Text(
+                    '탐색 시작',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
+  }
+}
+
+class _HomeTurntablePainter extends CustomPainter {
+  const _HomeTurntablePainter({required this.center, required this.radius});
+
+  final Offset center;
+  final double radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final deckRect = Rect.fromLTWH(
+      center.dx - radius * 1.28,
+      center.dy - radius * 1.2,
+      radius * 2.56,
+      radius * 2.42,
+    );
+    final deckRRect = RRect.fromRectAndRadius(
+      deckRect,
+      Radius.circular(radius * 0.16),
+    );
+    canvas.drawRRect(
+      deckRRect,
+      Paint()
+        ..shader = const LinearGradient(
+          colors: [Color(0xFF171720), Color(0xFF0C0C11)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ).createShader(deckRect),
+    );
+    canvas.drawRRect(
+      deckRRect,
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.06)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1,
+    );
+
+    canvas.drawCircle(
+      center.translate(0, 18),
+      radius * 1.02,
+      Paint()..color = Colors.black.withValues(alpha: 0.42),
+    );
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..shader = const RadialGradient(
+          colors: [Color(0xFF31313B), Color(0xFF111118), Color(0xFF030305)],
+          stops: [0.0, 0.5, 1],
+        ).createShader(Rect.fromCircle(center: center, radius: radius)),
+    );
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.12)
+        ..strokeWidth = 1.2
+        ..style = PaintingStyle.stroke,
+    );
+
+    for (var i = 0; i < 16; i++) {
+      final grooveRadius = radius * (0.2 + (i * 0.048));
+      canvas.drawCircle(
+        center,
+        grooveRadius,
+        Paint()
+          ..color = Colors.white.withValues(alpha: i.isEven ? 0.052 : 0.026)
+          ..strokeWidth = i.isEven ? 1.0 : 0.7
+          ..style = PaintingStyle.stroke,
+      );
+    }
+
+    canvas.drawCircle(
+      center,
+      radius * 0.055,
+      Paint()..color = const Color(0xFF111827),
+    );
+    canvas.drawCircle(
+      center,
+      radius * 0.024,
+      Paint()..color = const Color(0xFF2DD4BF),
+    );
+
+    final coverRect = deckRect.deflate(radius * 0.055);
+    final coverRRect = RRect.fromRectAndRadius(
+      coverRect,
+      Radius.circular(radius * 0.13),
+    );
+    canvas.drawRRect(
+      coverRRect,
+      Paint()
+        ..shader = LinearGradient(
+          colors: [
+            const Color(0xFFB8D9E4).withValues(alpha: 0.18),
+            const Color(0xFFE5F3F8).withValues(alpha: 0.08),
+            const Color(0xFF475569).withValues(alpha: 0.14),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ).createShader(coverRect),
+    );
+    canvas.drawRRect(
+      coverRRect,
+      Paint()
+        ..color = const Color(0xFFD8F4FF).withValues(alpha: 0.26)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.4,
+    );
+
+    final topGlare = Path()
+      ..moveTo(coverRect.left + radius * 0.2, coverRect.top + radius * 0.18)
+      ..lineTo(coverRect.right - radius * 0.22, coverRect.top + radius * 0.05)
+      ..lineTo(coverRect.right - radius * 0.34, coverRect.top + radius * 0.22)
+      ..lineTo(coverRect.left + radius * 0.08, coverRect.top + radius * 0.36)
+      ..close();
+    canvas.drawPath(
+      topGlare,
+      Paint()..color = Colors.white.withValues(alpha: 0.08),
+    );
+
+    final diagonalGlare = Path()
+      ..moveTo(coverRect.left + radius * 0.22, coverRect.bottom - radius * 0.2)
+      ..lineTo(coverRect.right - radius * 0.44, coverRect.top + radius * 0.12)
+      ..lineTo(coverRect.right - radius * 0.31, coverRect.top + radius * 0.2)
+      ..lineTo(coverRect.left + radius * 0.35, coverRect.bottom - radius * 0.1)
+      ..close();
+    canvas.drawPath(
+      diagonalGlare,
+      Paint()..color = Colors.white.withValues(alpha: 0.055),
+    );
+
+    final hingePaint = Paint()
+      ..color = const Color(0xFF475569).withValues(alpha: 0.92)
+      ..strokeWidth = radius * 0.035
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(
+      Offset(coverRect.left + radius * 0.18, coverRect.top + radius * 0.02),
+      Offset(coverRect.left + radius * 0.48, coverRect.top + radius * 0.02),
+      hingePaint,
+    );
+    canvas.drawLine(
+      Offset(coverRect.right - radius * 0.48, coverRect.top + radius * 0.02),
+      Offset(coverRect.right - radius * 0.18, coverRect.top + radius * 0.02),
+      hingePaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _HomeTurntablePainter oldDelegate) {
+    return oldDelegate.center != center || oldDelegate.radius != radius;
   }
 }
 
@@ -339,7 +603,8 @@ class VinylLoadingDialog extends StatefulWidget {
   State<VinylLoadingDialog> createState() => _VinylLoadingDialogState();
 }
 
-class _VinylLoadingDialogState extends State<VinylLoadingDialog> with TickerProviderStateMixin {
+class _VinylLoadingDialogState extends State<VinylLoadingDialog>
+    with TickerProviderStateMixin {
   late final AnimationController _discController;
   Timer? _lineTimer;
   int _lineIndex = 0;
@@ -354,8 +619,10 @@ class _VinylLoadingDialogState extends State<VinylLoadingDialog> with TickerProv
   @override
   void initState() {
     super.initState();
-    _discController = AnimationController(vsync: this, duration: const Duration(milliseconds: 1700))
-      ..repeat();
+    _discController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1700),
+    )..repeat();
 
     _lineTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       if (!mounted) {
@@ -410,9 +677,18 @@ class _VinylLoadingDialogState extends State<VinylLoadingDialog> with TickerProv
                               colors: [Color(0xFF34343A), Color(0xFF0D0D12)],
                               stops: [0.25, 1],
                             ),
-                            border: Border.all(color: const Color(0xFF4B5563).withValues(alpha: 0.3), width: 1),
+                            border: Border.all(
+                              color: const Color(
+                                0xFF4B5563,
+                              ).withValues(alpha: 0.3),
+                              width: 1,
+                            ),
                             boxShadow: const [
-                              BoxShadow(color: Color(0x66000000), blurRadius: 12, offset: Offset(0, 6)),
+                              BoxShadow(
+                                color: Color(0x66000000),
+                                blurRadius: 12,
+                                offset: Offset(0, 6),
+                              ),
                             ],
                           ),
                         ),
@@ -421,7 +697,10 @@ class _VinylLoadingDialogState extends State<VinylLoadingDialog> with TickerProv
                           height: 78,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white.withValues(alpha: 0.09), width: 2),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.09),
+                              width: 2,
+                            ),
                           ),
                         ),
                         Container(
@@ -429,7 +708,10 @@ class _VinylLoadingDialogState extends State<VinylLoadingDialog> with TickerProv
                           height: 52,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white.withValues(alpha: 0.08), width: 2),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.08),
+                              width: 2,
+                            ),
                           ),
                         ),
                         Container(
@@ -452,62 +734,13 @@ class _VinylLoadingDialogState extends State<VinylLoadingDialog> with TickerProv
                     ),
                   ),
                   Positioned(
-                    right: 22,
-                    top: 16,
-                    child: Transform.rotate(
-                      angle: 2.55,
-                      alignment: Alignment.centerLeft,
-                      child: SizedBox(
-                        width: 62,
-                        height: 18,
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          alignment: Alignment.centerLeft,
-                          children: [
-                            Container(
-                              width: 52,
-                              height: 4,
-                              margin: const EdgeInsets.only(left: 2),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF9CA3AF),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                            ),
-                            Positioned(
-                              right: 2,
-                              child: Container(
-                                width: 10,
-                                height: 10,
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFFF472B6),
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                            ),
-                            Positioned(
-                              right: -2,
-                              top: 7,
-                              child: Container(
-                                width: 8,
-                                height: 4,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFE5E7EB),
-                                  borderRadius: BorderRadius.circular(2),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    right: 50,
-                    top: 14,
-                    child: Container(
-                      width: 10,
-                      height: 10,
-                      decoration: const BoxDecoration(color: Color(0xFF6B7280), shape: BoxShape.circle),
+                    right: 0,
+                    top: 4,
+                    child: TurntableTonearm(
+                      size: 82,
+                      accent: const Color(0xFFF472B6),
+                      opacity: 0.95,
+                      rotation: -0.18,
                     ),
                   ),
                 ],
@@ -520,14 +753,21 @@ class _VinylLoadingDialogState extends State<VinylLoadingDialog> with TickerProv
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('분석 중', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                  const Text(
+                    '분석 중',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                  ),
                   const SizedBox(height: 12),
                   AnimatedSwitcher(
                     duration: const Duration(milliseconds: 300),
                     child: Text(
                       _lines[_lineIndex],
                       key: ValueKey(_lineIndex),
-                      style: const TextStyle(color: Color(0xFFA1A1AA), height: 1.4, fontSize: 13),
+                      style: const TextStyle(
+                        color: Color(0xFFA1A1AA),
+                        height: 1.4,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -539,30 +779,6 @@ class _VinylLoadingDialogState extends State<VinylLoadingDialog> with TickerProv
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _GlowOrb extends StatelessWidget {
-  const _GlowOrb({required this.size, required this.color});
-
-  final double size;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: RadialGradient(
-            colors: [color, color.withValues(alpha: 0)],
-            stops: const [0.15, 1],
-          ),
         ),
       ),
     );
